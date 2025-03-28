@@ -211,45 +211,78 @@ public class NotifyMessages : BasePlugin
     {
         var player = ev.Userid;
         if (player is null || player.IsBot || !player.IsValid) return HookResult.Continue;
-
-        if (string.IsNullOrEmpty(Config.ChangeTeamMessage))
-        {
-            return HookResult.Continue;
-        }
-
-        var playerName = player.PlayerName;
+        
         var newTeam = ev.Team;
         var oldTeam = ev.Oldteam;
 
-        // Игнорируем если игрок только зашел в игру (обычно с 0 на 1/2/3)
-        if (oldTeam == 0 || newTeam == 0 || newTeam == oldTeam)
+        // Игнорируем если игрок только подключился и еще не выбрал команду (0 -> 1/2/3)
+        if (oldTeam == 0 && (newTeam == 1 || newTeam == 2 || newTeam == 3))
+        {
+            AnnouncePlayerTeamJoin(player, newTeam);
             return HookResult.Continue;
+        }
+
+        // Если игрок поменял команду
+        if (newTeam != 0 && newTeam != oldTeam)
+        {
+            AnnounceTeamChange(player, oldTeam, newTeam);
+        }
+
+        return HookResult.Continue;
+    }
+
+    private void AnnounceTeamChange(CCSPlayerController player, int oldTeam, int newTeam)
+    {
+        if (string.IsNullOrEmpty(Config.ChangeTeamMessage)) return;
+
+        var playerName = player.PlayerName;
 
         var teamName = newTeam switch
         {
-            2 => "Terrorists",
-            3 => "Counter-Terrorists",
-            _ => "Spectators"
+            2 => "{RED}Terrorists{DEFAULT}",
+            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
+            _ => "{GREY}Spectators{DEFAULT}"
         };
 
         var oldTeamName = oldTeam switch
         {
-            2 => "Terrorists",
-            3 => "Counter-Terrorists",
-            _ => "Spectators"
+            2 => "{RED}Terrorists{DEFAULT}",
+            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
+            _ => "{GREY}Spectators{DEFAULT}"
         };
 
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
         {
-            var msg = Config.ChangeTeamMessage
+            var msg = ProcessMessage(Config.ChangeTeamMessage, 0)
                 .Replace("{PLAYERNAME}", playerName)
                 .Replace("{TEAM}", teamName)
                 .Replace("{OLD_TEAM}", oldTeamName);
-            
+
             PrintWrappedLine(HudDestination.Chat, msg, p, true);
         }
+    }
 
-        return HookResult.Continue;
+    private void AnnouncePlayerTeamJoin(CCSPlayerController player, int team)
+    {
+        if (string.IsNullOrEmpty(Config.JoinTeamMessage)) return;
+        
+        var playerName = player.PlayerName;
+        
+        var teamName = team switch
+        {
+            2 => "{RED}Terrorists{DEFAULT}",
+            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
+            _ => "{GREY}Spectators{DEFAULT}"
+        };
+
+        foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
+        {
+            var msg = ProcessMessage(Config.JoinTeamMessage, 0)
+                .Replace("{PLAYERNAME}", playerName)
+                .Replace("{TEAM}", teamName);
+
+            PrintWrappedLine(HudDestination.Chat, msg, p, true);
+        }
     }
 
     private HookResult EventPlayerTeamChangePre(EventPlayerTeam ev, GameEventInfo info)
@@ -757,7 +790,8 @@ public class NotifyMessages : BasePlugin
                 Message = "Welcome, {BLUE}{PLAYERNAME}",
                 DisplayDelay = 5
             },
-            ChangeTeamMessage = "Player {PLAYERNAME} changed team to {TEAM}",
+            ChangeTeamMessage = "Player {PLAYERNAME} changed from {OLD_TEAM} to {TEAM}",
+            JoinTeamMessage = "Player {PLAYERNAME} select {TEAM}",
             RestartMessage = "Server will be restarted in {TIME_RESTART}!",
             UpdateMessage = "Server will be updated in {TIME_RESTART}!",
             Ads =
@@ -886,6 +920,7 @@ public class Config
     public string? RestartMessage { get; set; }
     public string? UpdateMessage { get; set; }
     public string? ChangeTeamMessage { get; set; }
+    public string? JoinTeamMessage { get; set; }
     public List<Advertisement>? Ads { get; init; }
     public List<string>? Panel { get; init; }
     public string? DefaultLang { get; init; }

@@ -1,5 +1,5 @@
-# cs2-advertisement
-A plugin for cs2 that allows you to show ads in chat/center/panel
+# NotifyMessagesCS2
+A plugin for cs2 that allows you to show notification and ads in chat/center/panel
 
 # Installation
 1. Install [CounterStrike Sharp](https://github.com/roflmuffin/CounterStrikeSharp) and [Metamod:Source](https://www.sourcemm.net/downloads.php/?branch=master)
@@ -83,8 +83,8 @@ The config is created automatically in the same place where the dll is located
 //
 // ————————————————————————————————————————————————————————————————————————————————————————
 // [АВТОРЫ]
-// Разработчики: **thesamefabius & Armatura**
-// Версия плагина: **v1.2.1**
+// Разработчики: **Armatura**
+// Версия плагина: **v1.0.3**
 // ————————————————————————————————————————————————————————————————————————————————————————
 
 {
@@ -97,7 +97,8 @@ The config is created automatically in the same place where the dll is located
     "Message": "{prefix}{welcome_player} {RED}{PLAYERNAME} {DEFAULT}{welcome_text}",
     "DisplayDelay": 5
   },
-  "ChangeTeamMessage": "{prefix}{changeMessage}",
+  "ChangeTeamMessage": "{prefix}{changeTeamMessage}",
+  "JoinTeamMessage": "{prefix}{joinTeamMessage}",
   "JoinMessages": {
     "RU": [
       "{connected} Игрок {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] вылез из {GREEN}{COUNTRY}{DEFAULT}! Салют!",
@@ -333,8 +334,19 @@ The config is created automatically in the same place where the dll is located
       "PL": "Wydano aktualizację! Serwer zostanie ponownie uruchomiony za {TIME_RESTART}.",
       "DE": "Ein Update wurde veröffentlicht! Der Server wird in {TIME_RESTART} neu gestartet."
     },
-    "changeMessage" : {
-      "RU": "Test"
+    "changeTeamMessage": {
+      "RU": "{GREEN}{PLAYERNAME}{DEFAULT} перешел из команды {BLUE}{OLD_TEAM} в команду {BLUE}{TEAM}",
+      "US": "{GREEN}{PLAYERNAME}{DEFAULT} switched from {BLUE}{OLD_TEAM} to {BLUE}{TEAM}",
+      "UA": "{GREEN}{PLAYERNAME}{DEFAULT} перейшов з команди {BLUE}{OLD_TEAM} до команди {BLUE}{TEAM}",
+      "PL": "{GREEN}{PLAYERNAME}{DEFAULT} przeszedł z drużyny {BLUE}{OLD_TEAM} do drużyny {BLUE}{TEAM}",
+      "DE": "{GREEN}{PLAYERNAME}{DEFAULT} wechselte von {BLUE}{OLD_TEAM} zu {BLUE}{TEAM}"
+    },
+    "joinTeamMessage": {
+      "RU": "{GREEN}{PLAYERNAME}{DEFAULT} присоединился к {TEAM}",
+      "US": "{GREEN}{PLAYERNAME}{DEFAULT} joined {TEAM}",
+      "UA": "{GREEN}{PLAYERNAME}{DEFAULT} приєднався до {TEAM}",
+      "PL": "{GREEN}{PLAYERNAME}{DEFAULT} dołączył do {TEAM}",
+      "DE": "{GREEN}{PLAYERNAME}{DEFAULT} trat {TEAM} bei"
     },
     "player": {
       "RU": "Игрок",
