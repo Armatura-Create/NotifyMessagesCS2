@@ -732,10 +732,10 @@ public class NotifyMessages : BasePlugin
 
     private Config LoadConfig()
     {
-        var directory = Path.Combine(Application.RootDirectory, "configs/plugins/Advertisement");
+        var directory = Path.Combine(Application.RootDirectory, "configs/plugins/NotifyMessages");
         Directory.CreateDirectory(directory);
 
-        var configPath = Path.Combine(directory, "Advertisement.json");
+        var configPath = Path.Combine(directory, "NotifyMessages.json");
         if (!File.Exists(configPath))
             return CreateConfig(configPath);
 
