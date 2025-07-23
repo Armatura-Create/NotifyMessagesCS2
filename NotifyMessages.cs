@@ -6,6 +6,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
@@ -35,7 +36,7 @@ public class NotifyMessages : BasePlugin
 {
     public override string ModuleAuthor => "Armatura";
     public override string ModuleName => "NotifyMessages";
-    public override string ModuleVersion => "v1.0.3";
+    public override string ModuleVersion => "v1.0.4";
 
     private readonly List<Timer> _timers = [];
     private readonly List<Timer> _serverTimers = [];
@@ -51,6 +52,9 @@ public class NotifyMessages : BasePlugin
     // Ключ – (ip, port), значение – последний сформированный текст (или пусто, если ошибка)
     private readonly Dictionary<(string, int), string> _serverStatusCache = new();
     private readonly Dictionary<(string, int), string> _serverStatusCacheTemplate = new();
+
+    // ─── внутри класса NotifyMessages  ─────────────────────────────────────────────
+    private readonly object _serverCacheLock = new(); // <‑‑ защита кеша
 
     // Пользовательские данные по слотам
     private readonly User?[] _users = new User?[66];
@@ -211,7 +215,7 @@ public class NotifyMessages : BasePlugin
     {
         var player = ev.Userid;
         if (player is null || player.IsBot || !player.IsValid) return HookResult.Continue;
-        
+
         var newTeam = ev.Team;
         var oldTeam = ev.Oldteam;
 
@@ -265,9 +269,9 @@ public class NotifyMessages : BasePlugin
     private void AnnouncePlayerTeamJoin(CCSPlayerController player, int team)
     {
         if (string.IsNullOrEmpty(Config.JoinTeamMessage)) return;
-        
+
         var playerName = player.PlayerName;
-        
+
         var teamName = team switch
         {
             2 => "{RED}Terrorists{DEFAULT}",
@@ -348,26 +352,29 @@ public class NotifyMessages : BasePlugin
     // Опрос серверов по таймеру и их реклама
     private void StartServerTimers()
     {
-        if (Config.Servers == null || Config.Servers.List.Count == 0) return;
+        if (Config.Servers == null || Config.Servers.List.Count == 0)
+            return;
 
-
-        // Каждые serverInfo.Interval секунд делаем опрос
         _serverTimers.Add(AddTimer(Config.Servers.Interval, () =>
         {
-            var print = false;
-            foreach (var serverInfo in Config.Servers.List)
+            // Всё тяжёлое делаем в пуле потоков
+            _ = Task.Run(() =>
             {
-                // Обновляем кеш (QueryServer)
-                var success = QueryServer(serverInfo);
-                // Если успешно, анонсируем всем (AnnounceServersInChat) с титулом (если есть)
-                if (success)
-                {
-                    print = true;
-                }
-            }
+                var needAnnounce = false;
 
-            if (print)
-                AnnounceServersInChat();
+                foreach (var serverInfo in Config.Servers.List)
+                {
+                    // QueryServer остаётся синхронным, но выполняется уже НЕ в игровом потоке
+                    if (QueryServer(serverInfo))
+                        needAnnounce = true;
+                }
+
+                if (needAnnounce)
+                {
+                    // Возвращаемся в игровой поток через таймер с нулевой задержкой
+                    AddTimer(0.0f, AnnounceServersInChat);
+                }
+            });
         }, TimerFlags.REPEAT));
     }
 
@@ -510,37 +517,43 @@ public class NotifyMessages : BasePlugin
         try
         {
             var info = AdvancedA2S.GetServerInfo(serverInfo.Ip, (ushort)serverInfo.Port);
-            if (info == null)
+            lock (_serverCacheLock) // <‑‑ добавили
             {
-                Console.WriteLine($"[Ads] {serverInfo.Ip}:{serverInfo.Port} -> info == null");
-                _serverStatusCache.Remove((serverInfo.Ip, serverInfo.Port));
-                _serverStatusCacheTemplate.Remove((serverInfo.Ip, serverInfo.Port));
-                return false;
+                if (info == null)
+                {
+                    _serverStatusCache.Remove((serverInfo.Ip, serverInfo.Port));
+                    _serverStatusCacheTemplate.Remove((serverInfo.Ip, serverInfo.Port));
+                    return false;
+                }
+
+                var msg = serverInfo.MessageTemplate
+                    .Replace("{SERVER_IP}", serverInfo.Ip)
+                    .Replace("{SERVER_PORT}", serverInfo.Port.ToString())
+                    .Replace("{SERVER_MAP}", info.Map.Trim())
+                    .Replace("{SERVER_PLAYERS}", Math.Max(info.Players - info.Bots, 0).ToString())
+                    .Replace("{SERVER_MAXPLAYERS}", info.MaxPlayers.ToString());
+
+                var msgConsole = serverInfo.MessageTemplateConsole
+                    .Replace("{SERVER_IP}", serverInfo.Ip)
+                    .Replace("{SERVER_PORT}", serverInfo.Port.ToString())
+                    .Replace("{SERVER_MAP}", info.Map.Trim())
+                    .Replace("{SERVER_PLAYERS}", Math.Max(info.Players - info.Bots, 0).ToString())
+                    .Replace("{SERVER_MAXPLAYERS}", info.MaxPlayers.ToString());
+
+                _serverStatusCache[(serverInfo.Ip, serverInfo.Port)] = ProcessMessage(msg, 0);
+                _serverStatusCacheTemplate[(serverInfo.Ip, serverInfo.Port)] = ProcessMessage(msgConsole, 0);
+                return true;
             }
-
-            // Сформируем строку по шаблону
-            var msg = serverInfo.MessageTemplate
-                .Replace("{SERVER_IP}", serverInfo.Ip)
-                .Replace("{SERVER_PORT}", serverInfo.Port.ToString())
-                .Replace("{SERVER_MAP}", info.Map.Trim())
-                .Replace("{SERVER_PLAYERS}", (info.Players - info.Bots < 0 ? 0 : info.Players - info.Bots).ToString())
-                .Replace("{SERVER_MAXPLAYERS}", info.MaxPlayers.ToString());
-            var msgConsole = serverInfo.MessageTemplateConsole
-                .Replace("{SERVER_IP}", serverInfo.Ip)
-                .Replace("{SERVER_PORT}", serverInfo.Port.ToString())
-                .Replace("{SERVER_MAP}", info.Map.Trim())
-                .Replace("{SERVER_PLAYERS}", (info.Players - info.Bots < 0 ? 0 : info.Players - info.Bots).ToString())
-                .Replace("{SERVER_MAXPLAYERS}", info.MaxPlayers.ToString());
-
-            _serverStatusCache[(serverInfo.Ip, serverInfo.Port)] = ProcessMessage(msg, 0);
-            _serverStatusCacheTemplate[(serverInfo.Ip, serverInfo.Port)] = ProcessMessage(msgConsole, 0);
-            return true;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Ads] Ошибка опроса {serverInfo.Ip}:{serverInfo.Port} => {ex.Message}");
-            _serverStatusCache.Remove((serverInfo.Ip, serverInfo.Port));
-            _serverStatusCacheTemplate.Remove((serverInfo.Ip, serverInfo.Port));
+            Console.WriteLine($"[Ads] Query error {serverInfo.Ip}:{serverInfo.Port} => {ex.Message}");
+            lock (_serverCacheLock)
+            {
+                _serverStatusCache.Remove((serverInfo.Ip, serverInfo.Port));
+                _serverStatusCacheTemplate.Remove((serverInfo.Ip, serverInfo.Port));
+            }
+
             return false;
         }
     }
@@ -550,28 +563,31 @@ public class NotifyMessages : BasePlugin
     /// <summary>Анонсируем ВСЕМ игрокам (либо с заголовком, если isAd=true) список серверов из кеша.</summary>
     private void AnnounceServersInChat()
     {
-        var players = Utilities.GetPlayers().Where(u => !u.IsBot && u.IsValid);
-        if (!players.Any()) return; // никто не увидит
-
-        // Если в конфиге прописан заголовок и это реклама — выведем его
-        if (!string.IsNullOrEmpty(Config.TitleAnnounceServers))
+        lock (_serverCacheLock)
         {
-            PrintWrappedLine(HudDestination.Chat, Config.TitleAnnounceServers!);
-        }
+            var players = Utilities.GetPlayers().Where(u => !u.IsBot && u.IsValid);
+            if (!players.Any()) return; // никто не увидит
 
-        // Теперь выводим строки из кеша
-        foreach (var pair in _serverStatusCache)
-        {
-            var msg = pair.Value;
-            if (!string.IsNullOrEmpty(msg))
-                PrintWrappedLine(HudDestination.Chat, msg);
-        }
+            // Если в конфиге прописан заголовок и это реклама — выведем его
+            if (!string.IsNullOrEmpty(Config.TitleAnnounceServers))
+            {
+                PrintWrappedLine(HudDestination.Chat, Config.TitleAnnounceServers!);
+            }
 
-        foreach (var pair in _serverStatusCacheTemplate)
-        {
-            var msg = pair.Value;
-            if (!string.IsNullOrEmpty(msg))
-                PrintWrappedLine(HudDestination.Console, msg);
+            // Теперь выводим строки из кеша
+            foreach (var pair in _serverStatusCache)
+            {
+                var msg = pair.Value;
+                if (!string.IsNullOrEmpty(msg))
+                    PrintWrappedLine(HudDestination.Chat, msg);
+            }
+
+            foreach (var pair in _serverStatusCacheTemplate)
+            {
+                var msg = pair.Value;
+                if (!string.IsNullOrEmpty(msg))
+                    PrintWrappedLine(HudDestination.Console, msg);
+            }
         }
     }
 
