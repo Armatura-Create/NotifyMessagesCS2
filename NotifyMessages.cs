@@ -31,12 +31,12 @@ public class User
     public int PrintTime { get; set; }
 }
 
-[MinimumApiVersion(313)]
+[MinimumApiVersion(331)]
 public class NotifyMessages : BasePlugin
 {
     public override string ModuleAuthor => "Armatura";
     public override string ModuleName => "NotifyMessages";
-    public override string ModuleVersion => "v1.0.4";
+    public override string ModuleVersion => "v1.0.5";
 
     private readonly List<Timer> _timers = [];
     private readonly List<Timer> _serverTimers = [];
