@@ -6,8 +6,73 @@ A plugin for cs2 that allows you to show notification and ads in chat/center/pan
 3. Download [NotifyMessages](https://github.com/partiusfabaa/cs2-advertisement/releases/tag/v1.0.5)
 4. Unzip the archive and upload it to the game server
 
+## GeoLite2 databases (auto-download on build)
+To always package the latest GeoLite2-Country.mmdb and GeoLite2-City.mmdb, the build can automatically download them from MaxMind.
+
+You must provide a MaxMind GeoLite2 license key using one of the methods below:
+- Environment variable MAXMIND_LICENSE_KEY (or MSBuild property GeoLiteLicenseKey).
+  - macOS/Linux:
+    - export MAXMIND_LICENSE_KEY=YOUR_LICENSE_KEY
+    - dotnet build -c Release
+  - Windows (PowerShell):
+    - setx MAXMIND_LICENSE_KEY "YOUR_LICENSE_KEY"
+    - Restart terminal/IDE and build: dotnet build -c Release
+- Pass MSBuild property directly:
+  - dotnet build -c Release -p:GeoLiteLicenseKey=YOUR_LICENSE_KEY
+- Local props file (recommended for developers):
+  - Copy Directory.Build.props.example to Directory.Build.props (in repo root) and put your key inside.
+  - Directory.Build.props is ignored by git, so your key stays local.
+
+Notes:
+- On macOS/Linux the build uses curl and tar to fetch/extract archives. Ensure those tools are available on your CI/host.
+- If the key is not set or the download fails, the build will show: "GeoLite2 auto-download skipped: set MAXMIND_LICENSE_KEY environment variable to download latest GeoLite2 databases during build" and then try a local fallback. Place GeoLite2-Country.mmdb and GeoLite2-City.mmdb in the GeoIP/ folder (repo root). The build will copy them into the output if present and include them in the Release ZIP.
+- When the download succeeds, the .mmdb files are copied into the build output and included in the Release ZIP.
+
+## Project structure and modularization
+- Entry point: NotifyMessages (CounterStrikeSharp plugin class). The entry point remains unchanged.
+- Events registration: moved into a partial class at Events/NotifyMessages.Events.cs. All RegisterEventHandler/RegisterListener calls are centralized there via RegisterEvents(), which is invoked from Load().
+- Logging service: a reusable ILogger with PluginLogger implementation and a global Utils/LogService.cs for static contexts. Use _logger in services; static helpers (like AdvancedA2S) use LogService.Current.
+- Message processing: Services/MessageProcessor.cs handles localization and system tag replacement; color tag replacement is applied in the plugin entry before sending to players.
+- Models: Models/ConfigModels.cs, Models/User.cs – configuration and simple data types.
+- Server query helper: AdvancedA2S.cs – async A2S_INFO with challenge and split-packet support; now uses LogService for errors.
+- Packaging: Release build produces NotifyMessages.zip with structure addons/counterstrikesharp/plugins/NotifyMessages and required files (dll/pdb/deps + MaxMind libs + GeoLite2 DBs).
+- Next steps: event handlers, commands, translations, utilities and timers will be gradually moved from the monolithic file into dedicated partials/services to simplify maintenance.
+- Entry point: NotifyMessages (CounterStrikeSharp plugin class). The entry point remains unchanged.
+- Models: Models/ConfigModels.cs, Models/User.cs – configuration and simple data types.
+- Server query helper: AdvancedA2S.cs – async A2S_INFO with challenge and split-packet support.
+- Packaging: Release build produces NotifyMessages.zip with structure addons/counterstrikesharp/plugins/NotifyMessages and required files (dll/pdb/deps + MaxMind libs + GeoLite2 DBs).
+- Next steps: event handlers, commands, translations, utilities and timers will be gradually moved from the monolithic file into dedicated partials/services to simplify maintenance.
+
 # Config
-The config is created automatically in the same place where the dll is located
+The plugin now uses split configuration files for easier maintenance. They are created automatically under configs/plugins/NotifyMessages next to the dll:
+- Settings.json — basic settings (Debug, PrintToCenterHtml, durations, welcome, restart/update/team messages, localization, maps).
+- Ads.json — advertisement rotations (Ads, Panel).
+- Messages.json — join/leave localized messages.
+- Servers.json — server announcement settings and list (TitleAnnounceServers and Servers). By default announcements are disabled (Servers.Enabled=false); a stub configuration with a sample server is created. Set Enabled=true to activate.
+
+Example (default Servers.json):
+```
+{
+  "TitleAnnounceServers": "{announce_servers}",
+  "Servers": {
+    "Enabled": false,
+    "Interval": 125,
+    "QueryTimeoutMs": 1000,
+    "CacheTtlSeconds": 5,
+    "List": [
+      {
+        "Ip": "127.0.0.1",
+        "Port": 27015,
+        "MessageTemplate": "{LIGHTBLUE}ㅤㅤㅤ➡{DEFAULT} {GREEN}{SERVER_IP}:{SERVER_PORT}{DEFAULT} - {LIGHTBLUE}{SERVER_MAP}{DEFAULT} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{GREEN}{SERVER_MAXPLAYERS}",
+        "MessageTemplateConsole": "{SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
+        "MaxPlayersFallback": 24
+      }
+    ]
+  }
+}
+```
+
+Legacy single file NotifyMessages.json is still supported if the split files are not present.
 ```
 // ————————————————————————————————————————————————————————————————————————————————————————
 // [ТИПЫ СООБЩЕНИЙ]

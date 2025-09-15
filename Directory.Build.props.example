@@ -1,0 +1,11 @@
+<!--
+  Local developer override for supplying MaxMind GeoLite2 license key.
+  Copy this file to Directory.Build.props (kept out of git) and put your real key below.
+  DO NOT COMMIT the real Directory.Build.props file.
+-->
+<Project>
+  <PropertyGroup>
+    <!-- Your MaxMind license key. Equivalent to setting the env var MAXMIND_LICENSE_KEY -->
+    <GeoLiteLicenseKey>YOUR_LICENSE_KEY_HERE</GeoLiteLicenseKey>
+  </PropertyGroup>
+</Project>

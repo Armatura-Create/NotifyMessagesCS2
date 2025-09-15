@@ -7,10 +7,90 @@
     <Nullable>enable</Nullable>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <RootNamespace>NotifyMessages</RootNamespace>
+    <Version>1.1.0</Version>
+    <AssemblyName>NotifyMessages</AssemblyName>
+
+    <!-- Packaging paths -->
+    <PackageRoot>$(OutputPath)PackageRoot/</PackageRoot>
+    <PluginTargetDir>$(PackageRoot)addons/counterstrikesharp/plugins/NotifyMessages/</PluginTargetDir>
+    <ReleaseZipFile>$(OutputPath)NotifyMessages.zip</ReleaseZipFile>
+
+    <!-- MaxMind license key can be supplied by env var MAXMIND_LICENSE_KEY or property GeoLiteLicenseKey -->
+    <GeoLiteLicenseKey Condition=" '$(GeoLiteLicenseKey)' == '' ">$(MAXMIND_LICENSE_KEY)</GeoLiteLicenseKey>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="CounterStrikeSharp.API" Version="*" />
     <PackageReference Include="MaxMind.GeoIP2" Version="5.3.0" />
   </ItemGroup>
+
+  <!-- Download latest GeoLite2 Country/City databases after Build and before packaging (requires MAXMIND_LICENSE_KEY) -->
+  <Target Name="DownloadGeoLite2" AfterTargets="Build" BeforeTargets="PackageRelease">
+    <PropertyGroup>
+      <_HasKey>$(GeoLiteLicenseKey)</_HasKey>
+      <_TmpDir>$(IntermediateOutputPath)GeoLite2/</_TmpDir>
+      <_CountryUrl>https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&amp;license_key=$(GeoLiteLicenseKey)&amp;suffix=tar.gz</_CountryUrl>
+      <_CityUrl>https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&amp;license_key=$(GeoLiteLicenseKey)&amp;suffix=tar.gz</_CityUrl>
+      <_CountryArchive>$(_TmpDir)GeoLite2-Country.tar.gz</_CountryArchive>
+      <_CityArchive>$(_TmpDir)GeoLite2-City.tar.gz</_CityArchive>
+      <_CountryExtract>$(_TmpDir)country/</_CountryExtract>
+      <_CityExtract>$(_TmpDir)city/</_CityExtract>
+      <_GeoIPDir>$(MSBuildProjectDirectory)/GeoIP/</_GeoIPDir>
+    </PropertyGroup>
+
+    <Message Text="GeoLite2 auto-download is enabled" Condition=" '$(_HasKey)' != '' " Importance="high" />
+    <Message Text="GeoLite2 auto-download skipped: set MAXMIND_LICENSE_KEY environment variable to download latest GeoLite2 databases during build" Condition=" '$(_HasKey)' == '' " Importance="high" />
+
+    <MakeDir Directories="$(_TmpDir)" Condition=" '$(_HasKey)' != '' " />
+    <MakeDir Directories="$(_CountryExtract)" Condition=" '$(_HasKey)' != '' " />
+    <MakeDir Directories="$(_CityExtract)" Condition=" '$(_HasKey)' != '' " />
+
+    <!-- Non-Windows: use curl and tar to fetch and extract -->
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="curl -L -s -o &quot;$(_CountryArchive)&quot; &quot;$(_CountryUrl)&quot;" />
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="curl -L -s -o &quot;$(_CityArchive)&quot; &quot;$(_CityUrl)&quot;" />
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="tar -xzf &quot;$(_CountryArchive)&quot; -C &quot;$(_CountryExtract)&quot;" />
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="tar -xzf &quot;$(_CityArchive)&quot; -C &quot;$(_CityExtract)&quot;" />
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="/bin/sh -c 'cp &quot;$(_CountryExtract)&quot;*/GeoLite2-Country.mmdb &quot;$(TargetDir)GeoLite2-Country.mmdb&quot;'" />
+    <Exec Condition=" '$(_HasKey)' != '' and '$(OS)' != 'Windows_NT' " Command="/bin/sh -c 'cp &quot;$(_CityExtract)&quot;*/GeoLite2-City.mmdb &quot;$(TargetDir)GeoLite2-City.mmdb&quot;'" />
+    <Message Text="GeoLite2 databases downloaded and copied to $(TargetDir)" Condition=" '$(_HasKey)' != '' and Exists('$(TargetDir)GeoLite2-Country.mmdb') and Exists('$(TargetDir)GeoLite2-City.mmdb') " Importance="high" />
+
+    <!-- Optional cleanup -->
+    <RemoveDir Directories="$(_TmpDir)" Condition=" '$(_HasKey)' != '' " ContinueOnError="true" />
+
+    <!-- Fallback: copy from local GeoIP/ folder if download was skipped or failed -->
+    <Message Text="GeoLite2 fallback: copying GeoLite2-Country.mmdb from GeoIP/" Condition=" !Exists('$(TargetDir)GeoLite2-Country.mmdb') and Exists('$(_GeoIPDir)GeoLite2-Country.mmdb') " Importance="high" />
+    <Copy Condition=" !Exists('$(TargetDir)GeoLite2-Country.mmdb') and Exists('$(_GeoIPDir)GeoLite2-Country.mmdb') " SourceFiles="$(_GeoIPDir)GeoLite2-Country.mmdb" DestinationFiles="$(TargetDir)GeoLite2-Country.mmdb" SkipUnchangedFiles="true" />
+
+    <Message Text="GeoLite2 fallback: copying GeoLite2-City.mmdb from GeoIP/" Condition=" !Exists('$(TargetDir)GeoLite2-City.mmdb') and Exists('$(_GeoIPDir)GeoLite2-City.mmdb') " Importance="high" />
+    <Copy Condition=" !Exists('$(TargetDir)GeoLite2-City.mmdb') and Exists('$(_GeoIPDir)GeoLite2-City.mmdb') " SourceFiles="$(_GeoIPDir)GeoLite2-City.mmdb" DestinationFiles="$(TargetDir)GeoLite2-City.mmdb" SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- After building Release, stage files into CSS plugin structure and zip them -->
+  <Target Name="PackageRelease" AfterTargets="Build" Condition="'$(Configuration)'=='Release'">
+    <!-- Compute paths at execution time to ensure $(TargetDir) is set -->
+    <PropertyGroup>
+      <_PackageRoot>$(TargetDir)PackageRoot/</_PackageRoot>
+      <_PluginTargetDir>$(_PackageRoot)addons/counterstrikesharp/plugins/NotifyMessages/</_PluginTargetDir>
+      <_ReleaseZipFile>$(TargetDir)NotifyMessages.zip</_ReleaseZipFile>
+    </PropertyGroup>
+
+    <MakeDir Directories="$(_PluginTargetDir)" />
+
+    <ItemGroup>
+      <PluginFiles Include="$(TargetDir)NotifyMessages.dll" />
+      <PluginFiles Include="$(TargetDir)NotifyMessages.pdb" />
+      <PluginFiles Include="$(TargetDir)NotifyMessages.deps.json" />
+      <PluginFiles Include="$(TargetDir)MaxMind.GeoIP2.dll" />
+      <PluginFiles Include="$(TargetDir)MaxMind.Db.dll" />
+      <PluginFiles Include="$(TargetDir)GeoLite2-Country.mmdb" Condition="Exists('$(TargetDir)GeoLite2-Country.mmdb')" />
+      <PluginFiles Include="$(TargetDir)GeoLite2-City.mmdb" Condition="Exists('$(TargetDir)GeoLite2-City.mmdb')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(_PluginTargetDir)" SkipUnchangedFiles="true" />
+
+    <Delete Files="$(_ReleaseZipFile)" ContinueOnError="true" />
+    <Message Text="Packaging plugin into $(_ReleaseZipFile)" Importance="high" />
+    <Exec Command="zip -rq &quot;$(_ReleaseZipFile)&quot; ." WorkingDirectory="$(_PackageRoot)" />
+<!--    <RemoveDir Directories="$(_PackageRoot)" />-->
+  </Target>
 </Project>
