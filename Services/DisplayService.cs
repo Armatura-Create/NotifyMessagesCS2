@@ -42,6 +42,7 @@ public sealed class DisplayService
             switch (destination)
             {
                 case HudDestination.Chat:
+                    processed = TextFormatter.EnsureChatColorPrefix(processed);
                     connectPlayer.PrintToChat(processed);
                     break;
                 case HudDestination.Console:
@@ -64,6 +65,7 @@ public sealed class DisplayService
                 switch (destination)
                 {
                     case HudDestination.Chat:
+                        processed = TextFormatter.EnsureChatColorPrefix(processed);
                         player.PrintToChat(processed);
                         break;
                     case HudDestination.Console:

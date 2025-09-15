@@ -21,13 +21,14 @@ public static class TextFormatter
         ["{LIGHTBLUE}"] = "\x04",
         ["{OLIVE}"] = "\x05",
         ["{LIME}"] = "\x06",
+        ["{GREEN}"] = "\x06", // часто используемый синоним
         ["{RED}"] = "\x07",
         ["{LIGHTPURPLE}"] = "\x08",
         ["{PURPLE}"] = "\x09",
         ["{GREY}"] = "\x0A",
         ["{GRAY}"] = "\x0A",
         ["{YELLOW}"] = "\x0B",
-        ["{GOLD}"] = "\x0C",
+        ["{GOLD}"] = "\x0B", // синоним жёлтого
         ["{SILVER}"] = "\x0D",
         ["{BLUE}"] = "\x0E",
         ["{DARKBLUE}"] = "\x0F",
@@ -66,6 +67,17 @@ public static class TextFormatter
     {
         if (string.IsNullOrEmpty(input)) return input;
         return ColorCodesRegex.Replace(input, string.Empty);
+    }
+
+    /// Гарантирует, что строка для чата начинается с дефолтного цветового кода
+    public static string EnsureChatColorPrefix(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        char first = input[0];
+        bool startsWithCode = first >= '\x01' && first <= '\x10';
+        if (startsWithCode) return input;
+        // Префиксуем только если в строке уже есть цветовые коды
+        return ColorCodesRegex.IsMatch(input) ? "\x01" + input : input;
     }
 
     // Вспомогательный Replace с игнором регистра

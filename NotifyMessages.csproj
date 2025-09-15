@@ -69,7 +69,7 @@
   <Target Name="PackageRelease" AfterTargets="Build" Condition="'$(Configuration)'=='Release'">
     <!-- Compute paths at execution time to ensure $(TargetDir) is set -->
     <PropertyGroup>
-      <_PackageRoot>$(TargetDir)PackageRoot/</_PackageRoot>
+      <_PackageRoot>$(TargetDir)PackageRoot\</_PackageRoot>
       <_PluginTargetDir>$(_PackageRoot)addons/counterstrikesharp/plugins/NotifyMessages/</_PluginTargetDir>
       <_ReleaseZipFile>$(TargetDir)NotifyMessages.zip</_ReleaseZipFile>
     </PropertyGroup>
@@ -90,7 +90,10 @@
 
     <Delete Files="$(_ReleaseZipFile)" ContinueOnError="true" />
     <Message Text="Packaging plugin into $(_ReleaseZipFile)" Importance="high" />
-    <Exec Command="zip -rq &quot;$(_ReleaseZipFile)&quot; ." WorkingDirectory="$(_PackageRoot)" />
+    <!-- Use zip on non-Windows -->
+    <Exec Condition=" '$(OS)' != 'Windows_NT' " Command="zip -rq &quot;$(_ReleaseZipFile)&quot; ." WorkingDirectory="$(_PackageRoot)" />
+    <!-- Use PowerShell Compress-Archive on Windows -->
+    <Exec Condition=" '$(OS)' == 'Windows_NT' " Command="powershell -NoProfile -Command &quot;Compress-Archive -Path '*' -DestinationPath '$(_ReleaseZipFile)' -Force&quot;" WorkingDirectory="$(_PackageRoot)" />
 <!--    <RemoveDir Directories="$(_PackageRoot)" />-->
   </Target>
 </Project>
