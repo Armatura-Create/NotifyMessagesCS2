@@ -53,6 +53,27 @@ public sealed class MessageProcessor
         return ReplaceMessageTags(message).ReplaceColorTags();
     }
 
+    /// Возвращает случайное сообщение из набора (Join/Leave) с учётом языка игрока
+    public string GetRandomLocalizedMessage(Dictionary<string, List<string>>? messages, ulong recipientSteamId,
+        string playerName, string country, string city)
+    {
+        if (messages == null || messages.Count == 0) return string.Empty;
+
+        var lang = _config.DefaultLang ?? "US";
+        var iso = _getIsoCodeBySteamId(recipientSteamId);
+        if (iso != null && messages.ContainsKey(iso))
+            lang = iso;
+
+        if (!messages.TryGetValue(lang, out var messageList) || messageList.Count == 0) return string.Empty;
+
+        var message = messageList[Random.Shared.Next(messageList.Count)];
+
+        return message
+            .Replace("{PLAYERNAME}", playerName)
+            .Replace("{COUNTRY}", country)
+            .Replace("{CITY}", city);
+    }
+
     /// Заменяет системные теги и имена карт
     public string ReplaceMessageTags(string message)
     {

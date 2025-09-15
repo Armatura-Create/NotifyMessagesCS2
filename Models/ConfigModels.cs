@@ -57,7 +57,7 @@ public enum MessageType
 // ── расширено: параметры опроса ────────────────────────────────────────────────
 public class ServerInfo
 {
-    public bool Enabled { get; set; } = true; // включить/выключить анонс серверов
+    public bool Enabled { get; set; } = false; // включить/выключить анонс серверов
     public float Interval { get; set; } // период опроса
     public int? QueryTimeoutMs { get; set; } // 200–5000 рекомендовано
     public int? CacheTtlSeconds { get; set; } // 0–60

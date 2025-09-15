@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CounterStrikeSharp.API.Core;
+using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
 
@@ -168,5 +170,30 @@ public sealed class ServerStatusService
             .Replace("{SERVER_MAXPLAYERS}", max);
 
         return (msgChat, msgConsole);
+    }
+
+    /// Объявить список серверов игроку, используя текущий снимок кеша
+    public void AnnounceToPlayer(CCSPlayerController controller, MessageProcessor processor,
+        Action<HudDestination?, string, CCSPlayerController?, bool> print)
+    {
+        if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
+
+        if (!string.IsNullOrEmpty(_config.TitleAnnounceServers))
+            print(HudDestination.Chat, _config.TitleAnnounceServers!, controller, true);
+
+        var snapshot = GetSnapshot();
+        foreach (var entry in snapshot.OrderBy(v => v.Chat))
+        {
+            var msg = processor.ProcessMessage(entry.Chat, controller.SteamID);
+            if (!string.IsNullOrEmpty(msg))
+                print(HudDestination.Chat, msg, controller, true);
+        }
+
+        foreach (var entry in snapshot)
+        {
+            var msg = processor.ProcessMessage(entry.Console, controller.SteamID);
+            if (!string.IsNullOrEmpty(msg))
+                print(HudDestination.Console, msg, controller, true);
+        }
     }
 }

@@ -20,7 +20,7 @@ public partial class NotifyMessages
         if (controller == null) return;
         if (Config.Servers == null || !Config.Servers.Enabled || Config.Servers.List.Count == 0) return;
 
-        AnnounceServersToPlayer(controller);
+        _serverStatusService.AnnounceToPlayer(controller, _messageProcessor, _displayService.Print);
     }
 
     [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
@@ -39,7 +39,7 @@ public partial class NotifyMessages
         var formattedTime = timeSpan.ToString(@"mm\:ss");
         var restartMessage = _messageProcessor.ProcessMessage(Config.RestartMessage, 0).Replace("{TIME_RESTART}", formattedTime);
 
-        PrintWrappedLine(HudDestination.Chat, restartMessage);
+        _displayService.Print(HudDestination.Chat, restartMessage, null, false);
     }
 
     [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
@@ -58,14 +58,16 @@ public partial class NotifyMessages
         var formattedTime = timeSpan.ToString(@"mm\:ss");
         var restartMessage = _messageProcessor.ProcessMessage(Config.UpdateMessage, 0).Replace("{TIME_RESTART}", formattedTime);
 
-        PrintWrappedLine(HudDestination.Chat, restartMessage);
+        _displayService.Print(HudDestination.Chat, restartMessage, null, false);
     }
 
     [RequiresPermissions("@css/root")]
     [ConsoleCommand("css_advert_reload", "configuration restart")]
     public void ReloadAdvertConfig(CCSPlayerController? controller, CommandInfo command)
     {
-        Config = LoadConfig();
+        Config = _configService.LoadOrCreate(Application.RootDirectory);
+        _messageProcessor = new MessageProcessor(Config, steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
+        _displayService.Update(Config, _messageProcessor);
 
         // Re-init services and timers to apply new config
         try { _serverStatusService?.Stop(); } catch { /* ignore */ }
@@ -76,15 +78,15 @@ public partial class NotifyMessages
             (interval, action, flags) => AddTimer(interval, action, flags),
             action => AddTimer(0.0f, action));
 
-        foreach (var t in _timers) t.Kill();
-        _timers.Clear();
+        try { _advertisementService?.Stop(); } catch { /* ignore */ }
+        _advertisementService = new AdvertisementService(
+            Config,
+            _messageProcessor,
+            _logger,
+            (interval, action, flags) => AddTimer(interval, action, flags),
+            _displayService.Print);
 
-        foreach (var t in _serverTimers) t.Kill();
-        _serverTimers.Clear();
-
-        lock (_serverCacheLock) _serverCache.Clear();
-
-        InitialServerQuery();
+        _serverStatusService.InitialQuery();
         foreach (var player in Utilities.GetPlayers())
         {
             if (player.IpAddress == null || player.IsBot || !player.IsValid)
@@ -92,13 +94,12 @@ public partial class NotifyMessages
 
             var ip = player.IpAddress.Split(':')[0];
             var defaultLang = Config.DefaultLang ?? string.Empty;
-            _playerIsoCode[player.SteamID] = _geoIpService.GetIsoCode(ip, defaultLang);
-            _playerCity[player.SteamID] = _geoIpService.GetCity(ip);
+            _geoIpService.UpdatePlayerCache(player.SteamID, ip, defaultLang);
         }
 
-        InitialServerQuery();
-        StartTimers();
-        StartServerTimers();
+        _serverStatusService.InitialQuery();
+        _advertisementService.Start();
+        _serverStatusService.Start();
 
         const string msg = "[Advertisement] configuration successfully rebooted!";
         if (controller == null) _logger.Info(msg);

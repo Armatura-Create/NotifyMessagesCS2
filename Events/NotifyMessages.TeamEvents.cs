@@ -57,7 +57,7 @@ public partial class NotifyMessages
                 .Replace("{TEAM}", teamName)
                 .Replace("{OLD_TEAM}", oldTeamName);
 
-            PrintWrappedLine(HudDestination.Chat, msg, p, true);
+            _displayService.Print(HudDestination.Chat, msg, p, true);
         }
     }
 
@@ -80,7 +80,7 @@ public partial class NotifyMessages
                 .Replace("{PLAYERNAME}", playerName)
                 .Replace("{TEAM}", teamName);
 
-            PrintWrappedLine(HudDestination.Chat, msg, p, true);
+            _displayService.Print(HudDestination.Chat, msg, p, true);
         }
     }
 

@@ -16,35 +16,32 @@ public partial class NotifyMessages
         var player = ev.Userid;
         if (player is null || player.IsBot) return HookResult.Continue;
 
-        if (_connectionTimers.TryGetValue(player.SteamID, out var value))
+        if (_sessionService.TryKillAndRemoveConnectionTimer(player.SteamID))
         {
-            value.Kill();
-            _connectionTimers.Remove(player.SteamID);
         }
-        else if (_fullyConnectedPlayers.Contains(player.SteamID))
+        else if (_sessionService.IsFullyConnected(player.SteamID))
         {
             if (Config.LeaveMessages != null)
             {
-                _playerIsoCode.TryGetValue(player.SteamID, out var country);
-                _playerCity.TryGetValue(player.SteamID, out var city);
+                _geoIpService.TryGetPlayerIso(player.SteamID, out var country);
+                _geoIpService.TryGetPlayerCity(player.SteamID, out var city);
 
                 foreach (var p in Utilities.GetPlayers()
                              .Where(u => u is { IsBot: false, IsValid: true } && u.SteamID != player.SteamID))
                 {
-                    var message = GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID, player.PlayerName,
+                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID, player.PlayerName,
                         country ?? "Unknown", city ?? "Unknown");
 
                     if (!string.IsNullOrEmpty(message))
                     {
-                        PrintWrappedLine(HudDestination.Chat, message, p, true);
+                        _displayService.Print(HudDestination.Chat, message, p, true);
                     }
                 }
             }
         }
 
-        _fullyConnectedPlayers.Remove(player.SteamID);
-        _playerIsoCode.Remove(player.SteamID);
-        _playerCity.Remove(player.SteamID);
+        _sessionService.RemoveFullyConnected(player.SteamID);
+        _geoIpService.RemovePlayer(player.SteamID);
 
         return HookResult.Continue;
     }
@@ -58,14 +55,12 @@ public partial class NotifyMessages
     private void OnClientAuthorized(int slot, SteamID id)
     {
         var player = Utilities.GetPlayerFromSlot(slot);
-        _users[slot] = new User();
 
         if (player?.IpAddress == null) return;
 
         var ip = player.IpAddress.Split(':')[0];
         var defaultLang = Config.DefaultLang ?? string.Empty;
-        _playerIsoCode.TryAdd(id.SteamId64, _geoIpService.GetIsoCode(ip, defaultLang));
-        _playerCity.TryAdd(id.SteamId64, _geoIpService.GetCity(ip));
+        _geoIpService.UpdatePlayerCache(id.SteamId64, ip, defaultLang);
     }
 
     private HookResult EventPlayerConnectFull(EventPlayerConnectFull ev, GameEventInfo info)
@@ -74,34 +69,30 @@ public partial class NotifyMessages
         if (player is null || !player.IsValid || player.IsBot)
             return HookResult.Continue;
 
-        _fullyConnectedPlayers.Add(player.SteamID);
+        _sessionService.AddFullyConnected(player.SteamID);
 
-        if (_connectionTimers.ContainsKey(player.SteamID))
-        {
-            _connectionTimers[player.SteamID].Kill();
-            _connectionTimers.Remove(player.SteamID);
-        }
+        _sessionService.TryKillAndRemoveConnectionTimer(player.SteamID);
 
-        _connectionTimers[player.SteamID] = AddTimer(3.0f, () =>
+        _sessionService.SetConnectionTimer(player.SteamID, AddTimer(3.0f, () =>
         {
             if (Config.JoinMessages != null)
             {
                 if (!player.IsValid) return;
 
-                _playerIsoCode.TryGetValue(player.SteamID, out var country);
-                _playerCity.TryGetValue(player.SteamID, out var city);
+                _geoIpService.TryGetPlayerIso(player.SteamID, out var country);
+                _geoIpService.TryGetPlayerCity(player.SteamID, out var city);
 
                 foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
                 {
-                    var message = GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID, player.PlayerName,
+                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID, player.PlayerName,
                         country ?? "Unknown", city ?? "Unknown");
                     if (!string.IsNullOrEmpty(message))
-                        PrintWrappedLine(HudDestination.Chat, message, p, true);
+                        _displayService.Print(HudDestination.Chat, message, p, true);
                 }
             }
 
-            _connectionTimers.Remove(player.SteamID);
-        });
+            _sessionService.RemoveConnectionTimer(player.SteamID);
+        }));
 
         if (Config.WelcomeMessage == null || string.IsNullOrEmpty(Config.WelcomeMessage.Message))
             return HookResult.Continue;
@@ -110,7 +101,7 @@ public partial class NotifyMessages
         var msg = welcomeMsg.Message.Replace("{PLAYERNAME}", player.PlayerName);
         HudDestination type = Config.WelcomeMessage.MessageType == 0 ? HudDestination.Chat : HudDestination.Center;
 
-        AddTimer(Config.WelcomeMessage.DisplayDelay, () => { PrintWrappedLine(type, msg, player, true); });
+        AddTimer(Config.WelcomeMessage.DisplayDelay, () => { _displayService.Print(type, msg, player, true); });
 
         return HookResult.Continue;
     }

@@ -14,10 +14,62 @@ public sealed class GeoIpService : IDisposable
     private DatabaseReader? _countryDbReader;
     private DatabaseReader? _cityDbReader;
 
+    // Per-player geo cache moved from NotifyMessages
+    private readonly System.Collections.Generic.Dictionary<ulong, string> _playerIsoCode = new();
+    private readonly System.Collections.Generic.Dictionary<ulong, string> _playerCity = new();
+
     public GeoIpService(string moduleDirectory, ILogger logger)
     {
         _moduleDirectory = moduleDirectory;
         _logger = logger;
+    }
+
+    // Update per-player cache for a given SteamID and IP
+    public void UpdatePlayerCache(ulong steamId, string ip, string defaultLang)
+    {
+        try
+        {
+            var iso = GetIsoCode(ip, defaultLang);
+            var city = GetCity(ip);
+            _playerIsoCode[steamId] = iso;
+            _playerCity[steamId] = city;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"UpdatePlayerCache failed for {steamId}", ex);
+        }
+    }
+
+    public bool TryGetPlayerIso(ulong steamId, out string iso)
+    {
+        return _playerIsoCode.TryGetValue(steamId, out iso!);
+    }
+
+    public bool TryGetPlayerCity(ulong steamId, out string city)
+    {
+        return _playerCity.TryGetValue(steamId, out city!);
+    }
+
+    public string? GetIsoForSteamId(ulong steamId)
+    {
+        return _playerIsoCode.TryGetValue(steamId, out var iso) ? iso : null;
+    }
+
+    public string? GetCityForSteamId(ulong steamId)
+    {
+        return _playerCity.TryGetValue(steamId, out var city) ? city : null;
+    }
+
+    public void RemovePlayer(ulong steamId)
+    {
+        _playerIsoCode.Remove(steamId);
+        _playerCity.Remove(steamId);
+    }
+
+    public void ClearPlayers()
+    {
+        _playerIsoCode.Clear();
+        _playerCity.Clear();
     }
 
     /// Возвращает ISO‑код страны по IP. Если база недоступна — возвращает defaultLang
