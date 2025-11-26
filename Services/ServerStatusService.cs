@@ -37,43 +37,48 @@ public sealed class ServerStatusService
         _postToMainThread = postToMainThread;
     }
 
-    /// Единоразовый начальный опрос (без анонса) - выполняется асинхронно в фоне
+    /// Единоразовый начальный опрос (без анонса) - выполняется асинхронно в фоне через небольшую задержку
     public void InitialQuery()
     {
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
         
-        // Запускаем в фоне, чтобы не блокировать загрузку плагина
-        _ = Task.Run(async () =>
+        // Копируем данные из конфига в главном потоке
+        var serverList = _config.Servers.List.ToList();
+        var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 ? _config.Servers.QueryTimeoutMs.Value : 1000;
+        
+        // Запускаем через таймер с задержкой 0.1 сек, чтобы плагин успел полностью загрузиться
+        _addTimerSimple(0.1f, () =>
         {
-            try
+            _ = Task.Run(async () =>
             {
-                var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 ? _config.Servers.QueryTimeoutMs.Value : 1000;
-
-                var tasks = _config.Servers.List
-                    .Select(s => QueryAndStoreAsync(s, timeoutMs))
-                    .ToArray();
-
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-                
-                // Подсчитываем онлайн/оффлайн серверов
-                int onlineCount = 0;
-                int offlineCount = 0;
-                lock (_cacheLock)
+                try
                 {
-                    foreach (var entry in _serverCache.Values)
+                    var tasks = serverList
+                        .Select(s => QueryAndStoreAsync(s, timeoutMs))
+                        .ToArray();
+
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
+                    
+                    // Подсчитываем онлайн/оффлайн серверов
+                    int onlineCount = 0;
+                    int offlineCount = 0;
+                    lock (_cacheLock)
                     {
-                        if (entry.Online) onlineCount++;
-                        else offlineCount++;
+                        foreach (var entry in _serverCache.Values)
+                        {
+                            if (entry.Online) onlineCount++;
+                            else offlineCount++;
+                        }
                     }
+                    
+                    var count = serverList.Count;
+                    _postToMainThread(() => _logger.Debug($"[ServerStatus] Initial query completed: {onlineCount} online, {offlineCount} offline (total: {count})"));
                 }
-                
-                var count = _config.Servers.List.Count;
-                _postToMainThread(() => _logger.Debug($"[ServerStatus] Initial query completed: {onlineCount} online, {offlineCount} offline (total: {count})"));
-            }
-            catch (Exception ex)
-            {
-                _postToMainThread(() => _logger.Error("[ServerStatus] Initial query failed", ex));
-            }
+                catch (Exception ex)
+                {
+                    _postToMainThread(() => _logger.Error("[ServerStatus] Initial query failed", ex));
+                }
+            });
         });
     }
 
@@ -86,21 +91,22 @@ public sealed class ServerStatusService
         var interval = Math.Max(5f, _config.Servers.Interval);
         _timers.Add(_addTimer(interval, () =>
         {
+            // Копируем данные из конфига в главном потоке (внутри таймера)
+            var serverList = _config.Servers.List.ToList();
+            var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
+                ? _config.Servers.QueryTimeoutMs.Value
+                : 1000;
+            var ttlSeconds = _config.Servers.CacheTtlSeconds is >= 0 and <= 60
+                ? _config.Servers.CacheTtlSeconds.Value
+                : 5;
+            
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
-                        ? _config.Servers.QueryTimeoutMs.Value
-                        : 1000;
-
-                    var ttlSeconds = _config.Servers.CacheTtlSeconds is >= 0 and <= 60
-                        ? _config.Servers.CacheTtlSeconds.Value
-                        : 5;
-
                     var now = DateTime.UtcNow;
                     var tasks = new List<Task>();
-                    foreach (var s in _config.Servers.List)
+                    foreach (var s in serverList)
                     {
                         var key = (s.Ip, s.Port);
                         bool needQuery;
@@ -142,15 +148,17 @@ public sealed class ServerStatusService
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0)
             return;
 
+        // Копируем данные из конфига в главном потоке
+        var serverList = _config.Servers.List.ToList();
+        var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
+            ? _config.Servers.QueryTimeoutMs.Value
+            : 1000;
+
         _ = Task.Run(async () =>
         {
             try
             {
-                var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
-                    ? _config.Servers.QueryTimeoutMs.Value
-                    : 1000;
-
-                var tasks = _config.Servers.List
+                var tasks = serverList
                     .Select(s => QueryAndStoreAsync(s, timeoutMs))
                     .ToArray();
 
@@ -168,7 +176,7 @@ public sealed class ServerStatusService
                     }
                 }
                 
-                var count = _config.Servers.List.Count;
+                var count = serverList.Count;
                 _postToMainThread(() => _logger.Debug($"[ServerStatus] Background update completed: {onlineCount} online, {offlineCount} offline (total: {count})"));
             }
             catch (Exception ex)
