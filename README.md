@@ -44,29 +44,32 @@ addons/counterstrikesharp/plugins/NotifyMessages/
 Плагин использует **модульную систему конфигурации** — 4 отдельных JSON-файла в папке:
 ```
 csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
-├── Settings.json    # Основные настройки и локализация
-├── Ads.json         # Рекламные сообщения
-├── Messages.json    # Сообщения входа/выхода игроков
-└── Servers.json     # Мониторинг других серверов
+├── Settings.json    # Основные настройки плагина
+├── Messages.json    # Все переводы и текстовые сообщения
+├── Ads.json         # Рекламные объявления
+├── Servers.json     # Список серверов для мониторинга
+└── README.txt       # Подробная документация по конфигам
 ```
 
-Все файлы создаются автоматически при первом запуске. После редактирования используйте команду `css_advert_reload` для применения изменений без перезапуска сервера.
+**При первом запуске** плагин автоматически создаёт все 4 файла с детальными примерами + `README.txt` с полной документацией!
+
+После редактирования используйте команду `css_reload_advert` для применения изменений без перезапуска сервера.
 
 ---
 
 ### 📄 Settings.json — Основные настройки
 
-**Назначение:** Базовые параметры плагина, локализация, приветственные сообщения, замена названий карт.
+**Назначение:** Базовые параметры плагина, приветственные сообщения, ссылки на ключи переводов.
 
 #### Структура:
 
 ```json
 {
-  "Debug": false,
-  "PrintToCenterHtml": false,
-  "HtmlCenterDuration": 5.0,
-  "ShowHtmlWhenDead": false,
+  "Debug": true,
   "DefaultLang": "RU",
+  "PrintToCenterHtml": false,
+  "ShowHtmlWhenDead": null,
+  "HtmlCenterDuration": null,
   
   "WelcomeMessage": {
     "MessageType": 0,
@@ -74,72 +77,21 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
     "DisplayDelay": 5
   },
   
-  "ChangeTeamMessage": "{prefix}{changeTeamMessage}",
-  "JoinTeamMessage": "{prefix}{joinTeamMessage}",
   "RestartMessage": "{prefix}{RED}{will_restarted}",
   "UpdateMessage": "{prefix}{RED}{will_updated}",
+  "ChangeTeamMessage": "{prefix}{changeTeamMessage}",
+  "JoinTeamMessage": "{prefix}{joinTeamMessage}",
+  "TitleAnnounceServers": "{prefix}{announce_servers}",
   
-  "LanguageMessages": {
-    "prefix": {
-      "RU": "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-      "US": "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-      "UA": "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-      "PL": "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-      "DE": "{LIGHTBLUE}Armaturix ➡{DEFAULT} "
-    },
-    "welcome_player": {
-      "RU": "Добро пожаловать",
-      "US": "Welcome",
-      "UA": "Ласкаво просимо",
-      "PL": "Witamy",
-      "DE": "Willkommen"
-    },
-    "welcome_text": {
-      "RU": "на игровой сервер {RED}Armaturix",
-      "US": "to the game server {RED}Armaturix",
-      "UA": "на ігровий сервер {RED}Armaturix",
+  "MapsName": {
+    "de_dust2": "Dust 2",
+    "de_mirage": "Mirage",
       "PL": "na serwer gry {RED}Armaturix",
       "DE": "auf den Spieleserver {RED}Armaturix"
     },
-    "will_restarted": {
-      "RU": "Сервер будет перезапущен через {TIME_RESTART}!",
-      "US": "The server will be restarted in {TIME_RESTART}!",
-      "UA": "Сервер буде перезапущено через {TIME_RESTART}!",
-      "PL": "Serwer zostanie ponownie uruchomiony za {TIME_RESTART}!",
-      "DE": "Der Server wird in {TIME_RESTART} neu gestartet!"
-    },
-    "will_updated": {
-      "RU": "Вышло обновление! Сервер будет перезапущен через {TIME_RESTART}.",
-      "US": "An update has been released! The server will restart in {TIME_RESTART}.",
-      "UA": "Вийшло оновлення! Сервер буде перезапущено через {TIME_RESTART}.",
-      "PL": "Wydano aktualizację! Serwer zostanie ponownie uruchomiony za {TIME_RESTART}.",
-      "DE": "Ein Update wurde veröffentlicht! Der Server wird in {TIME_RESTART} neu gestartet."
-    },
-    "changeTeamMessage": {
-      "RU": "{GREEN}{PLAYERNAME}{DEFAULT} перешел из команды {OLD_TEAM} в команду {TEAM}",
-      "US": "{GREEN}{PLAYERNAME}{DEFAULT} switched from {OLD_TEAM} to {TEAM}",
-      "UA": "{GREEN}{PLAYERNAME}{DEFAULT} перейшов з команди {OLD_TEAM} до команди {TEAM}",
-      "PL": "{GREEN}{PLAYERNAME}{DEFAULT} przeszedł z drużyny {OLD_TEAM} do drużyny {TEAM}",
-      "DE": "{GREEN}{PLAYERNAME}{DEFAULT} wechselte von {OLD_TEAM} zu {TEAM}"
-    },
-    "joinTeamMessage": {
-      "RU": "{GREEN}{PLAYERNAME}{DEFAULT} присоединился к {TEAM}",
-      "US": "{GREEN}{PLAYERNAME}{DEFAULT} joined {TEAM}",
-      "UA": "{GREEN}{PLAYERNAME}{DEFAULT} приєднався до {TEAM}",
-      "PL": "{GREEN}{PLAYERNAME}{DEFAULT} dołączył do {TEAM}",
-      "DE": "{GREEN}{PLAYERNAME}{DEFAULT} trat {TEAM} bei"
-    }
-  },
-  
-  "MapsName": {
-    "de_mirage": "MIRAGE",
-    "de_dust2": "DUST 2",
-    "de_inferno": "INFERNO",
-    "de_nuke": "NUKE",
-    "de_overpass": "OVERPASS",
-    "de_vertigo": "VERTIGO",
-    "de_ancient": "ANCIENT",
-    "de_anubis": "ANUBIS"
+    "de_inferno": "Inferno",
+    "de_nuke": "Nuke",
+    "de_overpass": "Overpass"
   }
 }
 ```
@@ -148,62 +100,125 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 
 | Параметр | Тип | Описание |
 |----------|-----|----------|
-| `Debug` | bool | Включить подробное логирование в консоль сервера |
-| `PrintToCenterHtml` | bool | Использовать HTML-режим для центральных сообщений |
-| `HtmlCenterDuration` | float | Длительность показа HTML-сообщения в секундах |
-| `ShowHtmlWhenDead` | bool | Показывать HTML-центр мёртвым игрокам/наблюдателям |
+| `Debug` | bool | Включить подробное логирование (true/false) |
 | `DefaultLang` | string | Язык по умолчанию (RU/US/UA/PL/DE) |
+| `PrintToCenterHtml` | bool? | Использовать HTML для центральных сообщений |
+| `ShowHtmlWhenDead` | bool? | Показывать HTML мёртвым игрокам |
+| `HtmlCenterDuration` | float? | Длительность показа HTML в секундах |
 | `WelcomeMessage` | object | Приветственное сообщение при подключении |
-| `ChangeTeamMessage` | string | Шаблон сообщения при смене команды |
-| `JoinTeamMessage` | string | Шаблон при первом вступлении в команду |
-| `RestartMessage` | string | Сообщение о рестарте сервера |
-| `UpdateMessage` | string | Сообщение об обновлении |
-| `LanguageMessages` | object | Словарь переводов для всех языков |
-| `MapsName` | object | Замена технических названий карт на красивые |
+| `RestartMessage` | string | Шаблон сообщения о рестарте (использует ключи из Messages.json) |
+| `UpdateMessage` | string | Шаблон сообщения об обновлении |
+| `ChangeTeamMessage` | string | Шаблон при смене команды |
+| `JoinTeamMessage` | string | Шаблон при входе в команду |
+| `TitleAnnounceServers` | string | Заголовок для команды !servers |
+| `MapsName` | object | Красивые названия карт (технич. название → отображаемое) |
+
+**💡 Важно:** В сообщениях используются ключи типа `{prefix}`, `{welcome_player}` и т.д. — все переводы находятся в **Messages.json**!
 
 #### WelcomeMessage:
 
 ```json
 {
   "MessageType": 0,      // 0=Chat, 1=Center, 2=CenterHtml, 3=Console
-  "Message": "...",      // Текст с поддержкой всех плейсхолдеров
-  "DisplayDelay": 5      // Задержка в секундах перед показом
+  "Message": "...",      // Шаблон с ключами из Messages.json
+  "DisplayDelay": 5      // Задержка показа в секундах
 }
 ```
 
 ---
 
-### 📢 Ads.json — Рекламные сообщения
+### 🌍 Messages.json — Переводы и сообщения
 
-**Назначение:** Циклические рекламные сообщения с настраиваемыми интервалами.
+**Назначение:** Централизованное хранилище всех текстов и переводов на разные языки.
 
-#### Полный пример:
+#### Структура:
+
+```json
+{
+  "LanguageMessages": {
+    "ключ": {
+      "RU": "Русский текст",
+      "US": "English text",
+      "UA": "Український текст",
+      "PL": "Polski tekst",
+      "DE": "Deutscher Text"
+    }
+  },
+  "JoinMessages": { ... },
+  "LeaveMessages": { ... }
+}
+```
+
+#### LanguageMessages — Переводы:
+
+Здесь находятся ВСЕ переводимые тексты плагина. Примеры ключей:
+
+- `prefix` — префикс для всех сообщений
+- `welcome_player` — приветствие игрока
+- `welcome_text` — текст приветствия
+- `reklama_1`, `reklama_2`, ... — тексты рекламы
+- `will_restarted`, `will_updated` — системные сообщения
+- `changeTeamMessage`, `joinTeamMessage` — сообщения о командах
+- `player`, `connected`, `disconnected` — статусы игроков
+- `announce_servers` — заголовок списка серверов
+
+Полный список смотрите в автоматически созданном файле после первого запуска!
+
+#### JoinMessages / LeaveMessages:
+
+Массивы сообщений для показа при подключении/отключении игроков:
+
+```json
+{
+  "JoinMessages": {
+    "RU": [
+      "{player} {connected} Страна: {country}, Город: {city}",
+      "{connected} Игрок {PLAYERNAME} из {COUNTRY}!"
+    ],
+    "US": [
+      "{player} {connected} Country: {country}, City: {city}"
+    ]
+  }
+}
+```
+
+Плагин случайно выбирает одно из сообщений для языка игрока.
+
+**Доступные плейсхолдеры:**
+- `{PLAYERNAME}` — имя игрока
+- `{COUNTRY}` — страна (через GeoIP)
+- `{CITY}` — город (через GeoIP)
+- `{player}`, `{connected}`, `{disconnected}` — ключи переводов из LanguageMessages
+
+---
+
+### 📢 Ads.json — Реклама
+
+**Назначение:** Циклические рекламные объявления с настраиваемыми интервалами.
+
+#### Пример:
 
 ```json
 {
   "Ads": [
     {
-      "Interval": 60,
+      "Interval": 120,
       "Messages": [
-        { 
-          "Chat": "{prefix}{reklama_1}" 
-        },
-        { 
-          "Chat": "{prefix}{reklama_2}", 
-          "Center": "!viptest - FREE!" 
-        },
-        { 
-          "Chat": "{prefix}{reklama_3}", 
-          "Console": "Discord: discord.gg/example" 
-        }
+        { "Chat": "{prefix}{reklama_1}" },
+        { "Center": "!ws • !knife • !gloves • !skins" }
       ]
     },
     {
-      "Interval": 120,
+      "Interval": 180,
       "Messages": [
-        { 
-          "Chat": "{prefix}{reklama_shop}" 
-        }
+        { "Chat": "{prefix}{reklama_2}" },
+        { "Center": "!viptest - FREE!" }
+      ]
+    },
+    {
+      "Interval": 240,
+      "Messages": [
+        { "Chat": "{prefix}{reklama_3}" }
       ]
     }
   ]
@@ -215,162 +230,61 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 | Параметр | Описание |
 |----------|----------|
 | `Interval` | Интервал показа в секундах (минимум 1) |
-| `Messages` | Массив сообщений (показываются по очереди) |
+| `Messages` | Массив сообщений (показываются циклически) |
 
 #### Каналы вывода:
 
 - `"Chat"` — в чат
-- `"Center"` — в центр экрана (обычный)
+- `"Center"` — в центр экрана
 - `"Console"` — в консоль игрока
 
 Можно комбинировать несколько каналов в одном сообщении!
 
-#### Примеры тегов локализации в Settings.json:
-
-```json
-"LanguageMessages": {
-  "reklama_1": {
-    "RU": "Хочешь крутые скины? Используй команды:\n➡ !ws\n➡ !knife\n➡ !gloves",
-    "US": "Want awesome skins? Use commands:\n➡ !ws\n➡ !knife\n➡ !gloves"
-  },
-  "reklama_2": {
-    "RU": "Хочешь попробовать VIP? Активируй бесплатно на час:\n{RED}➡ !viptest",
-    "US": "Want to try VIP? Activate for free for 1 hour:\n{RED}➡ !viptest"
-  },
-  "reklama_3": {
-    "RU": "Общайся в нашем Discord: {RED}discord.gg/example",
-    "US": "Join our Discord: {RED}discord.gg/example"
-  }
-}
-```
-
----
-
-### 👥 Messages.json — Сообщения входа/выхода
-
-**Назначение:** Сообщения о подключении и отключении игроков с автоопределением страны и города.
-
-#### Полный пример:
-
-```json
-{
-  "JoinMessages": {
-    "RU": [
-      "{connected} Игрок {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] вылез из {GREEN}{COUNTRY}{DEFAULT}! Салют!",
-      "{connected} Игрок {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] ворвался из {GREEN}{COUNTRY}{DEFAULT}, как царь!",
-      "{connected} Игрок {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] прибыл из {GREEN}{CITY}, {COUNTRY}{DEFAULT}!"
-    ],
-    "US": [
-      "{connected} Player {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] emerged from {GREEN}{COUNTRY}{DEFAULT}!",
-      "{connected} Player {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] rushed in from {GREEN}{COUNTRY}{DEFAULT}!",
-      "{connected} Player {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] arrived from {GREEN}{CITY}, {COUNTRY}{DEFAULT}!"
-    ],
-    "UA": [
-      "{connected} Гравець {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] виліз із {GREEN}{COUNTRY}{DEFAULT}!",
-      "{connected} Гравець {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] прибув із {GREEN}{CITY}, {COUNTRY}{DEFAULT}!"
-    ],
-    "PL": [
-      "{connected} Gracz {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] wynurzył się z {GREEN}{COUNTRY}{DEFAULT}!",
-      "{connected} Gracz {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] przybył z {GREEN}{CITY}, {COUNTRY}{DEFAULT}!"
-    ],
-    "DE": [
-      "{connected} Spieler {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] kam aus {GREEN}{COUNTRY}{DEFAULT}!",
-      "{connected} Spieler {DEFAULT}[ {LIGHTBLUE}{PLAYERNAME} {DEFAULT}] ist aus {GREEN}{CITY}, {COUNTRY}{DEFAULT} angekommen!"
-    ]
-  },
-  
-  "LeaveMessages": {
-    "RU": [
-      "{disconnected} {DARKRED}Игрок {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}превратился в пиксели{GREY}…",
-      "{disconnected} {DARKRED}Игрок {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}выбыл из игры!",
-      "{disconnected} {DARKRED}Игрок {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}вышел из матрицы."
-    ],
-    "US": [
-      "{disconnected} {DARKRED}Player {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}turned into pixels{GREY}…",
-      "{disconnected} {DARKRED}Player {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}left the game!",
-      "{disconnected} {DARKRED}Player {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}exited the matrix."
-    ],
-    "UA": [
-      "{disconnected} {DARKRED}Гравець {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}перетворився на пікселі{GREY}…",
-      "{disconnected} {DARKRED}Гравець {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}вийшов з гри!"
-    ],
-    "PL": [
-      "{disconnected} {DARKRED}Gracz {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}zmienił się w piksele{GREY}…",
-      "{disconnected} {DARKRED}Gracz {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}opuścił grę!"
-    ],
-    "DE": [
-      "{disconnected} {DARKRED}Spieler {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}wurde zu Pixeln{GREY}…",
-      "{disconnected} {DARKRED}Spieler {GREY}[ {SILVER}{PLAYERNAME} {GREY}] {DARKRED}hat das Spiel verlassen!"
-    ]
-  }
-}
-```
-
-#### Доступные плейсхолдеры:
-
-| Плейсхолдер | Описание |
-|-------------|----------|
-| `{PLAYERNAME}` | Имя игрока |
-| `{COUNTRY}` | Страна (определяется по IP через GeoIP) |
-| `{CITY}` | Город (определяется по IP через GeoIP) |
-| `{connected}` | Локализованный префикс "Подключился" |
-| `{disconnected}` | Локализованный префикс "Отключился" |
-
-**Важно:** Плагин выбирает случайное сообщение из массива для разнообразия!
+**💡 Совет:** Ключи типа `{reklama_1}`, `{reklama_2}` берутся из **Messages.json** → `LanguageMessages`
 
 ---
 
 ### 🖥️ Servers.json — Мониторинг серверов
 
-**Назначение:** Отображение статуса других серверов через A2S-протокол с асинхронным кешированием.
+**Назначение:** Отображение статуса других серверов через A2S-протокол.
 
-#### Полный пример:
+#### Пример:
 
 ```json
 {
-  "TitleAnnounceServers": "{announce_servers}",
+  "Enabled": true,
+  "Interval": 60,
+  "QueryTimeoutMs": 500,
+  "CacheTtlSeconds": 30,
   
-  "Servers": {
-    "Enabled": true,
-    "Interval": 125,
-    "QueryTimeoutMs": 1000,
-    "CacheTtlSeconds": 10,
-    
-    "List": [
-      {
-        "Ip": "192.168.1.100",
-        "Port": 27015,
-        "MessageTemplate": "{LIGHTBLUE}➡{DEFAULT} {GREEN}{SERVER_IP}:{SERVER_PORT}{DEFAULT} - {LIGHTBLUE}{SERVER_MAP}{DEFAULT} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{GREEN}{SERVER_MAXPLAYERS}",
-        "MessageTemplateConsole": "{SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
-        "MaxPlayersFallback": 24
-      },
-      {
-        "Ip": "play.example.com",
-        "Port": 27016,
-        "MessageTemplate": "{LIGHTBLUE}➡{DEFAULT} {RED}VIP Server{DEFAULT} - {LIGHTBLUE}{SERVER_MAP}{DEFAULT} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{GREEN}{SERVER_MAXPLAYERS}",
-        "MessageTemplateConsole": "VIP Server - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
-        "MaxPlayersFallback": 16
-      },
-      {
-        "Ip": "127.0.0.1",
-        "Port": 27017,
-        "MessageTemplate": "{LIGHTBLUE}➡{DEFAULT} {YELLOW}AWP Only{DEFAULT} - {LIGHTBLUE}{SERVER_MAP}{DEFAULT} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{GREEN}{SERVER_MAXPLAYERS}",
-        "MessageTemplateConsole": "AWP Only - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
-        "MaxPlayersFallback": 32
-      }
-    ]
-  }
+  "List": [
+    {
+      "Ip": "123.45.67.89",
+      "Port": 27015,
+      "MessageTemplate": "{LIGHTBLUE}[SERVER 1]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}",
+      "MessageTemplateConsole": "Server 1: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
+      "MaxPlayersFallback": 32
+    },
+    {
+      "Ip": "123.45.67.90",
+      "Port": 27015,
+      "MessageTemplate": "{LIGHTBLUE}[SERVER 2]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}",
+      "MessageTemplateConsole": "Server 2: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
+      "MaxPlayersFallback": 32
+    }
+  ]
 }
 ```
 
-#### Параметры:
+#### Основные параметры:
 
 | Параметр | Тип | Описание |
 |----------|-----|----------|
-| `Enabled` | bool | Включить/выключить мониторинг серверов |
-| `Interval` | float | Интервал автоматического опроса в секундах (минимум 5) |
-| `QueryTimeoutMs` | int | Таймаут A2S-запроса в миллисекундах (200-5000) |
-| `CacheTtlSeconds` | int | Время жизни кеша в секундах (0-60, 0=без кеша) |
+| `Enabled` | bool | Включить/выключить мониторинг (по умолчанию `false`) |
+| `Interval` | float | Интервал автоматического опроса в секундах (минимум 5, рекомендуется 60+) |
+| `QueryTimeoutMs` | int | Таймаут A2S-запроса в миллисекундах (200-5000, рекомендуется 500) |
+| `CacheTtlSeconds` | int | Время жизни кеша в секундах (0-60, рекомендуется 30) |
+| `List` | array | Массив серверов для мониторинга |
 
 #### Параметры сервера:
 
@@ -378,26 +292,27 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 |----------|----------|
 | `Ip` | IP-адрес или hostname сервера |
 | `Port` | Порт сервера |
-| `MessageTemplate` | Шаблон для чата (с цветами) |
+| `MessageTemplate` | Шаблон для чата (с цветовыми тегами) |
 | `MessageTemplateConsole` | Шаблон для консоли (без цветов) |
 | `MaxPlayersFallback` | Макс. игроков если сервер оффлайн |
 
-#### Плейсхолдеры для шаблонов:
+#### Плейсхолдеры для MessageTemplate:
 
 | Плейсхолдер | Описание |
 |-------------|----------|
 | `{SERVER_IP}` | IP-адрес сервера |
 | `{SERVER_PORT}` | Порт сервера |
-| `{SERVER_MAP}` | Текущая карта (или "OFFLINE") |
-| `{SERVER_PLAYERS}` | Количество игроков |
-| `{SERVER_MAXPLAYERS}` | Максимум игроков |
+| `{SERVER_MAP}` | Текущая карта (или "OFFLINE" если недоступен) |
+| `{SERVER_PLAYERS}` | Количество игроков онлайн |
+| `{SERVER_MAXPLAYERS}` | Максимум игроков (или MaxPlayersFallback) |
 
 #### Особенности работы:
 
-- **Асинхронные запросы** — не блокируют сервер при загрузке
-- **Фоновое обновление** — после показа списка кеш обновляется в фоне
-- **Кеширование** — повторные запросы берутся из кеша
-- **Thread-safe** — безопасная работа в многопоточной среде
+- ✅ **Синхронные запросы в главном потоке** — полная стабильность, без thread-ошибок
+- ✅ **Умное кеширование** — TTL-кеш снижает нагрузку на серверы
+- ✅ **Фоновое обновление** — после команды `!servers` кеш обновляется для следующего запроса
+- ✅ **Последовательная обработка** — серверы опрашиваются с интервалом 50-100ms
+- ⚠️ **Компромисс:** Возможна небольшая задержка сервера при опросе (до 500ms на сервер)
 
 ---
 
@@ -456,7 +371,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 |---------|-------|----------|
 | `css_announce_restart <сек>` | SERVER_ONLY | Объявить рестарт через N секунд (1-3600) |
 | `css_announce_update <сек>` | SERVER_ONLY | Объявить обновление через N секунд (1-3600) |
-| `css_advert_reload` | @css/root | Перезагрузить все конфигурации |
+| `css_reload_advert` | @css/root | Перезагрузить все 4 конфигурации без перезапуска |
 
 **Важно:** Команды `css_announce_restart` и `css_announce_update` имеют ограничение **от 1 до 3600 секунд** (1 час) для безопасности.
 
@@ -465,7 +380,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 ```
 css_announce_restart 300     // Рестарт через 5 минут
 css_announce_update 60       // Обновление через 1 минуту
-css_advert_reload            // Перезагрузить конфиги
+css_reload_advert            // Перезагрузить все конфиги
 ```
 
 ---
@@ -477,25 +392,34 @@ css_advert_reload            // Перезагрузить конфиги
 1. **Кеширование сообщений по языку**
    - Сообщения обрабатываются один раз для каждого языка
    - Если у всех игроков RU язык, обработка происходит только один раз
+   - Значительное сокращение CPU нагрузки при большом количестве игроков
 
 2. **Скомпилированные регулярные выражения**
    - Regex для парсинга тегов компилируется один раз при загрузке
    - Значительное ускорение обработки сообщений
 
-3. **Асинхронные A2S-запросы**
-   - Все запросы к другим серверам выполняются в фоне
-   - Не блокируют загрузку плагина и работу игрового сервера
-   - Используется `Task.Run` и `async/await`
+3. **Умные A2S-запросы серверов**
+   - Запросы выполняются в главном потоке для стабильности
+   - Последовательная обработка с интервалами 50-100ms
+   - TTL-кеширование снижает частоту запросов
+   - Уменьшенный таймаут (500ms) для минимизации задержек
 
 4. **Thread-safe операции**
    - Все критические секции защищены `lock`
    - SessionService безопасен для многопоточного доступа
    - ServerStatusService использует потокобезопасный кеш
+   - Полная защита от race conditions
 
 5. **Улучшенное логирование**
-   - Временные метки для всех сообщений
-   - Полные Stack Trace для ошибок
+   - Временные метки для всех сообщений (HH:mm:ss)
+   - Полные Stack Trace для ошибок в Debug режиме
    - Структурированный формат: `[timestamp] [plugin] [level] message`
+   - Опциональный вывод обработанных сообщений в консоль
+
+6. **Модульная конфигурация**
+   - 4 отдельных файла для разных функций
+   - Быстрая загрузка при старте
+   - Простая поддержка и редактирование
 
 ---
 
