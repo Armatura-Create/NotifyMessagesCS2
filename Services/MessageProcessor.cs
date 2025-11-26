@@ -18,6 +18,8 @@ namespace NotifyMessages;
 /// - замену имён карт согласно Config.MapsName
 public sealed class MessageProcessor
 {
+    private static readonly Regex TagPattern = new Regex(@"\{([^}]*)\}", RegexOptions.Compiled);
+    
     private readonly Config _config;
     private readonly Func<ulong, string?> _getIsoCodeBySteamId;
 
@@ -27,13 +29,19 @@ public sealed class MessageProcessor
         _getIsoCodeBySteamId = getIsoCodeBySteamId;
     }
 
+    /// Получить ISO-код для игрока (для кеширования)
+    public string? GetIsoCodeBySteamId(ulong steamId)
+    {
+        return _getIsoCodeBySteamId(steamId);
+    }
+
     /// Применяет локализацию и замену тегов
     public string ProcessMessage(string message, ulong steamId)
     {
         if (_config.LanguageMessages == null)
             return ReplaceMessageTags(message).ReplaceColorTags();
 
-        var matches = Regex.Matches(message, @"\{([^}]*)\}");
+        var matches = TagPattern.Matches(message);
         foreach (Match match in matches)
         {
             var tag = match.Groups[0].Value;

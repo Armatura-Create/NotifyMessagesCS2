@@ -52,7 +52,8 @@ public partial class NotifyMessages
 
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
         {
-            var msg = _messageProcessor.ProcessMessage(Config.ChangeTeamMessage, 0)
+            // Используем steamID каждого игрока для локализации сообщения
+            var msg = _messageProcessor.ProcessMessage(Config.ChangeTeamMessage, p.SteamID)
                 .Replace("{PLAYERNAME}", playerName)
                 .Replace("{TEAM}", teamName)
                 .Replace("{OLD_TEAM}", oldTeamName);
@@ -76,7 +77,8 @@ public partial class NotifyMessages
 
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
         {
-            var msg = _messageProcessor.ProcessMessage(Config.JoinTeamMessage, 0)
+            // Используем steamID каждого игрока для локализации сообщения
+            var msg = _messageProcessor.ProcessMessage(Config.JoinTeamMessage, p.SteamID)
                 .Replace("{PLAYERNAME}", playerName)
                 .Replace("{TEAM}", teamName);
 

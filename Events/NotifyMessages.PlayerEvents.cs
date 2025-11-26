@@ -98,7 +98,9 @@ public partial class NotifyMessages
             return HookResult.Continue;
 
         var welcomeMsg = Config.WelcomeMessage;
-        var msg = welcomeMsg.Message.Replace("{PLAYERNAME}", player.PlayerName);
+        // Используем MessageProcessor для поддержки всех тегов, включая локализацию
+        var msg = _messageProcessor.ProcessMessage(welcomeMsg.Message, player.SteamID)
+            .Replace("{PLAYERNAME}", player.PlayerName);
         HudDestination type = Config.WelcomeMessage.MessageType == 0 ? HudDestination.Chat : HudDestination.Center;
 
         AddTimer(Config.WelcomeMessage.DisplayDelay, () => { _displayService.Print(type, msg, player, true); });

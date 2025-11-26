@@ -20,16 +20,20 @@ public partial class NotifyMessages
         if (controller == null) return;
         if (Config.Servers == null || !Config.Servers.Enabled || Config.Servers.List.Count == 0) return;
 
+        // Показываем текущие данные из кеша
         _serverStatusService.AnnounceToPlayer(controller, _messageProcessor, _displayService.Print);
+        
+        // Запускаем фоновое обновление кеша для следующего запроса
+        _serverStatusService.TriggerBackgroundUpdate();
     }
 
     [CommandHelper(whoCanExecute: CommandUsage.SERVER_ONLY)]
     [ConsoleCommand("css_announce_restart", "Сказать всем, что будет рестарт через N секунд")]
     public void AnnounceRestart(CCSPlayerController? controller, CommandInfo command)
     {
-        if (command.ArgCount < 2 || !int.TryParse(command.ArgString, out var seconds) || seconds <= 0)
+        if (command.ArgCount < 2 || !int.TryParse(command.ArgString, out var seconds) || seconds <= 0 || seconds > 3600)
         {
-            controller?.PrintToChat("[ERROR] Use: css_announce_restart <seconds>");
+            controller?.PrintToChat("[ERROR] Use: css_announce_restart <seconds> (1-3600)");
             return;
         }
 
@@ -46,9 +50,9 @@ public partial class NotifyMessages
     [ConsoleCommand("css_announce_update", "Сказать всем, что будет обновлен через N секунд")]
     public void AnnounceUpdate(CCSPlayerController? controller, CommandInfo command)
     {
-        if (command.ArgCount < 2 || !int.TryParse(command.ArgString, out var seconds) || seconds <= 0)
+        if (command.ArgCount < 2 || !int.TryParse(command.ArgString, out var seconds) || seconds <= 0 || seconds > 3600)
         {
-            controller?.PrintToChat("[ERROR] Use: css_announce_update <seconds>");
+            controller?.PrintToChat("[ERROR] Use: css_announce_update <seconds> (1-3600)");
             return;
         }
 
@@ -86,7 +90,6 @@ public partial class NotifyMessages
             (interval, action, flags) => AddTimer(interval, action, flags),
             _displayService.Print);
 
-        _serverStatusService.InitialQuery();
         foreach (var player in Utilities.GetPlayers())
         {
             if (player.IpAddress == null || player.IsBot || !player.IsValid)

@@ -14,20 +14,25 @@ public sealed class PluginLogger : ILogger
 
     public void Info(string message)
     {
-        Console.WriteLine($"[NotifyMessages] {message}");
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        Console.WriteLine($"[{timestamp}] [NotifyMessages] [INFO] {message}");
     }
 
     public void Debug(string message)
     {
         if (_isDebug())
-            Console.WriteLine($"[NotifyMessages][DEBUG] {message}");
+        {
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            Console.WriteLine($"[{timestamp}] [NotifyMessages] [DEBUG] {message}");
+        }
     }
 
     public void Error(string message, Exception? ex = null)
     {
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         if (ex != null)
-            Console.WriteLine($"[NotifyMessages][ERROR] {message} => {ex.Message}");
+            Console.WriteLine($"[{timestamp}] [NotifyMessages] [ERROR] {message} => {ex.Message}\nStack trace: {ex.StackTrace}");
         else
-            Console.WriteLine($"[NotifyMessages][ERROR] {message}");
+            Console.WriteLine($"[{timestamp}] [NotifyMessages] [ERROR] {message}");
     }
 }

@@ -37,17 +37,31 @@ public sealed class ServerStatusService
         _postToMainThread = postToMainThread;
     }
 
-    /// Единоразовый начальный опрос (без анонса)
+    /// Единоразовый начальный опрос (без анонса) - выполняется асинхронно в фоне
     public void InitialQuery()
     {
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
-        var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 ? _config.Servers.QueryTimeoutMs.Value : 1000;
+        
+        // Запускаем в фоне, чтобы не блокировать загрузку плагина
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 ? _config.Servers.QueryTimeoutMs.Value : 1000;
 
-        var tasks = _config.Servers.List
-            .Select(s => QueryAndStoreAsync(s, timeoutMs))
-            .ToArray();
+                var tasks = _config.Servers.List
+                    .Select(s => QueryAndStoreAsync(s, timeoutMs))
+                    .ToArray();
 
-        Task.WaitAll(tasks, Math.Min(5000, timeoutMs * 2));
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                
+                _logger.Debug($"[ServerStatus] Initial query completed for {_config.Servers.List.Count} server(s)");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("[ServerStatus] Initial query failed", ex);
+            }
+        });
     }
 
     /// Запускает периодический опрос и обновляет кеш
@@ -98,6 +112,35 @@ public sealed class ServerStatusService
     {
         foreach (var t in _timers) t.Kill();
         _timers.Clear();
+    }
+
+    /// Принудительно запустить обновление кеша в фоне (например, после показа списка серверов)
+    public void TriggerBackgroundUpdate()
+    {
+        if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0)
+            return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
+                    ? _config.Servers.QueryTimeoutMs.Value
+                    : 1000;
+
+                var tasks = _config.Servers.List
+                    .Select(s => QueryAndStoreAsync(s, timeoutMs))
+                    .ToArray();
+
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+                
+                _logger.Debug($"[ServerStatus] Background update completed for {_config.Servers.List.Count} server(s)");
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("[ServerStatus] Background update failed", ex);
+            }
+        });
     }
 
     /// Снимок кеша (копия значений) — безопасно и удобно сортировать снаружи

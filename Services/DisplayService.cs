@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
@@ -58,9 +59,19 @@ public sealed class DisplayService
         }
         else
         {
+            // Кешируем обработанные сообщения по ISO-коду для оптимизации
+            var processedMessages = new Dictionary<string, string>();
+            
             foreach (var player in Utilities.GetPlayers().Where(u => !privateMsg && !u.IsBot && u.IsValid))
             {
-                var processed = _messageProcessor.ProcessMessage(message, player.SteamID);
+                // Получаем ISO-код для кеширования
+                var isoCode = _messageProcessor.GetIsoCodeBySteamId(player.SteamID) ?? _config.DefaultLang ?? "default";
+                
+                if (!processedMessages.TryGetValue(isoCode, out var processed))
+                {
+                    processed = _messageProcessor.ProcessMessage(message, player.SteamID);
+                    processedMessages[isoCode] = processed;
+                }
 
                 switch (destination)
                 {
@@ -103,7 +114,7 @@ public sealed class DisplayService
                     continue;
 
                 var duration = _config.HtmlCenterDuration;
-                if (duration != null && TimeSpan.FromSeconds(user.PrintTime / 64.0).Seconds < duration.Value)
+                if (duration != null && TimeSpan.FromSeconds(user.PrintTime / 64.0).TotalSeconds < duration.Value)
                 {
                     player.PrintToCenterHtml(user.Message);
                     user.PrintTime++;
