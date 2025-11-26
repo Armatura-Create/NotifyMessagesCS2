@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace NotifyMessages;
@@ -53,10 +54,16 @@ public static class TextFormatter
         // Поддержка спец-тега пробела
         result = result.Replace("{SPACE}", "\u3164\u3164\u3164"); // несколько широких пробелов
 
-        foreach (var kv in ColorTagMap)
+        // ВАЖНО: Заменяем теги от ДЛИННЫХ к КОРОТКИМ, чтобы избежать конфликтов
+        // Например, {LIGHTBLUE} должен заменяться раньше чем {LIGHT} (если бы он был)
+        // Используем порядок по убыванию длины ключа
+        var sortedTags = ColorTagMap.OrderByDescending(kv => kv.Key.Length);
+        
+        foreach (var kv in sortedTags)
         {
+            // Используем простой case-insensitive Replace
             if (result.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
-                result = result.Replace(kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
+                result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
         }
 
         return result;
