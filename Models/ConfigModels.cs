@@ -4,30 +4,74 @@ using System.Text.Json.Serialization;
 
 namespace NotifyMessages;
 
-// ----------------- Конфигурация и модели -------------------
+// ----------------- Главный конфиг (объединяет все части) -------------------
 public class Config
 {
+    // Основные настройки из Settings.json
+    public bool Debug { get; set; } = true;
+    public string? DefaultLang { get; init; }
     public bool? PrintToCenterHtml { get; init; }
-    public float? HtmlCenterDuration { get; init; }
     public bool? ShowHtmlWhenDead { get; set; }
-    public bool Debug { get; set; } = false;
+    public float? HtmlCenterDuration { get; init; }
     public WelcomeMessage? WelcomeMessage { get; init; }
-
     public string? RestartMessage { get; set; }
     public string? UpdateMessage { get; set; }
     public string? ChangeTeamMessage { get; set; }
     public string? JoinTeamMessage { get; set; }
-    public List<Advertisement>? Ads { get; init; }
-    public List<string>? Panel { get; init; }
-    public string? DefaultLang { get; init; }
-    public Dictionary<string, Dictionary<string, string>>? LanguageMessages { get; init; }
+    public string? TitleAnnounceServers { get; set; }
     public Dictionary<string, string>? MapsName { get; init; }
 
+    // Сообщения из Messages.json
+    public Dictionary<string, Dictionary<string, string>>? LanguageMessages { get; init; }
     public Dictionary<string, List<string>>? JoinMessages { get; init; }
     public Dictionary<string, List<string>>? LeaveMessages { get; init; }
 
-    public string? TitleAnnounceServers { get; set; }
+    // Реклама из Ads.json
+    public List<Advertisement>? Ads { get; init; }
+
+    // Серверы из Servers.json
     public ServerInfo? Servers { get; init; }
+}
+
+// ----------------- Settings.json -------------------
+public class SettingsConfig
+{
+    public bool Debug { get; set; } = true;
+    public string DefaultLang { get; set; } = "RU";
+    public bool? PrintToCenterHtml { get; set; }
+    public bool? ShowHtmlWhenDead { get; set; }
+    public float? HtmlCenterDuration { get; set; }
+    public WelcomeMessage? WelcomeMessage { get; set; }
+    public string? RestartMessage { get; set; }
+    public string? UpdateMessage { get; set; }
+    public string? ChangeTeamMessage { get; set; }
+    public string? JoinTeamMessage { get; set; }
+    public string? TitleAnnounceServers { get; set; }
+    public Dictionary<string, string>? MapsName { get; set; }
+}
+
+// ----------------- Messages.json -------------------
+public class MessagesConfig
+{
+    public Dictionary<string, Dictionary<string, string>> LanguageMessages { get; set; } = new();
+    public Dictionary<string, List<string>>? JoinMessages { get; set; }
+    public Dictionary<string, List<string>>? LeaveMessages { get; set; }
+}
+
+// ----------------- Ads.json -------------------
+public class AdsConfig
+{
+    public List<Advertisement> Ads { get; set; } = new();
+}
+
+// ----------------- Servers.json -------------------
+public class ServersConfig
+{
+    public bool Enabled { get; set; } = false;
+    public float Interval { get; set; } = 60;
+    public int? QueryTimeoutMs { get; set; } = 500;
+    public int? CacheTtlSeconds { get; set; } = 30;
+    public List<ServerData> List { get; set; } = new();
 }
 
 public class WelcomeMessage
@@ -54,14 +98,10 @@ public enum MessageType
     Console
 }
 
-// ── расширено: параметры опроса ────────────────────────────────────────────────
-public class ServerInfo
+// ── Alias для обратной совместимости внутри кода ──────────────────────────────
+public class ServerInfo : ServersConfig
 {
-    public bool Enabled { get; set; } = false; // включить/выключить анонс серверов
-    public float Interval { get; set; } // период опроса
-    public int? QueryTimeoutMs { get; set; } // 200–5000 рекомендовано
-    public int? CacheTtlSeconds { get; set; } // 0–60
-    public List<ServerData> List { get; set; } = new();
+    // Этот класс используется внутри Config, наследуется от ServersConfig
 }
 
 public class ServerData
