@@ -37,52 +37,52 @@ public sealed class ServerStatusService
         _postToMainThread = postToMainThread;
     }
 
-    /// Единоразовый начальный опрос (без анонса) - выполняется асинхронно в фоне через небольшую задержку
+    /// Единоразовый начальный опрос (без анонса) - выполняется последовательно через таймеры
     public void InitialQuery()
     {
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
         
-        // Запускаем через таймер с задержкой 1.0 сек, чтобы плагин успел полностью загрузиться
-        _addTimerSimple(1.0f, () =>
+        // Запускаем через таймеры последовательно - по 0.05 сек на каждый сервер
+        // Это избегает проблем с Task.Run и cross-thread доступом
+        var serverList = _config.Servers.List.ToList();
+        var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 
+            ? _config.Servers.QueryTimeoutMs.Value 
+            : 500; // Уменьшаем таймаут чтобы не блокировать надолго
+        
+        float delay = 1.0f; // Начальная задержка
+        foreach (var server in serverList)
         {
-            // Копируем данные из конфига в главном потоке (внутри callback таймера)
-            var serverList = _config.Servers?.List?.ToList();
-            var timeoutMs = _config.Servers?.QueryTimeoutMs is > 0 and <= 5000 
-                ? _config.Servers.QueryTimeoutMs.Value 
-                : 1000;
-            
-            if (serverList == null || serverList.Count == 0) return;
-            
-            _ = Task.Run(async () =>
+            var s = server; // Захватываем для замыкания
+            _addTimerSimple(delay, () =>
             {
+                _logger.Debug($"[ServerStatus] Querying {s.Ip}:{s.Port}...");
                 try
                 {
-                    var tasks = serverList
-                        .Select(s => QueryAndStoreAsync(s, timeoutMs))
-                        .ToArray();
-
-                    await Task.WhenAll(tasks).ConfigureAwait(false);
-                    
-                    // Подсчитываем онлайн/оффлайн серверов
-                    int onlineCount = 0;
-                    int offlineCount = 0;
-                    lock (_cacheLock)
-                    {
-                        foreach (var entry in _serverCache.Values)
-                        {
-                            if (entry.Online) onlineCount++;
-                            else offlineCount++;
-                        }
-                    }
-                    
-                    var count = serverList.Count;
-                    _postToMainThread(() => _logger.Debug($"[ServerStatus] Initial query completed: {onlineCount} online, {offlineCount} offline (total: {count})"));
+                    // Блокирующий вызов - выполняется в главном потоке
+                    QueryAndStoreAsync(s, timeoutMs).GetAwaiter().GetResult();
                 }
                 catch (Exception ex)
                 {
-                    _postToMainThread(() => _logger.Error("[ServerStatus] Initial query failed", ex));
+                    _logger.Error($"[ServerStatus] Query failed for {s.Ip}:{s.Port} - {ex.GetType().Name}: {ex.Message}");
                 }
             });
+            delay += 0.1f; // Запросы с интервалом 100ms
+        }
+        
+        // После всех запросов показываем статистику
+        _addTimerSimple(delay + 0.5f, () =>
+        {
+            int onlineCount = 0;
+            int offlineCount = 0;
+            lock (_cacheLock)
+            {
+                foreach (var entry in _serverCache.Values)
+                {
+                    if (entry.Online) onlineCount++;
+                    else offlineCount++;
+                }
+            }
+            _logger.Debug($"[ServerStatus] Initial query completed: {onlineCount} online, {offlineCount} offline (total: {serverList.Count})");
         });
     }
 
@@ -99,43 +99,54 @@ public sealed class ServerStatusService
             var serverList = _config.Servers.List.ToList();
             var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
                 ? _config.Servers.QueryTimeoutMs.Value
-                : 1000;
+                : 500; // Уменьшенный таймаут для периодических запросов
             var ttlSeconds = _config.Servers.CacheTtlSeconds is >= 0 and <= 60
                 ? _config.Servers.CacheTtlSeconds.Value
                 : 5;
             
-            _ = Task.Run(async () =>
+            // Последовательные запросы в главном потоке через вложенные таймеры
+            var now = DateTime.UtcNow;
+            var serversToQuery = new List<ServerData>();
+            
+            foreach (var s in serverList)
             {
-                try
+                var key = (s.Ip, s.Port);
+                bool needQuery;
+                lock (_cacheLock)
                 {
-                    var now = DateTime.UtcNow;
-                    var tasks = new List<Task>();
-                    foreach (var s in serverList)
-                    {
-                        var key = (s.Ip, s.Port);
-                        bool needQuery;
-                        lock (_cacheLock)
-                        {
-                            needQuery = !_serverCache.TryGetValue(key, out var entry) ||
-                                        (ttlSeconds == 0) ||
-                                        (now - entry.UpdatedAtUtc).TotalSeconds >= ttlSeconds;
-                        }
-                        if (!needQuery) continue;
-                        tasks.Add(QueryAndStoreAsync(s, timeoutMs));
-                    }
+                    needQuery = !_serverCache.TryGetValue(key, out var entry) ||
+                                (ttlSeconds == 0) ||
+                                (now - entry.UpdatedAtUtc).TotalSeconds >= ttlSeconds;
+                }
+                if (needQuery)
+                    serversToQuery.Add(s);
+            }
 
-                    if (tasks.Count > 0)
-                    {
-                        await Task.WhenAll(tasks).ConfigureAwait(false);
-                        var taskCount = tasks.Count;
-                        _postToMainThread(() => _logger.Debug($"[ServerStatus] Periodic update completed for {taskCount} server(s)"));
-                    }
-                }
-                catch (Exception ex)
+            if (serversToQuery.Count > 0)
+            {
+                float delay = 0.05f;
+                foreach (var s in serversToQuery)
                 {
-                    _postToMainThread(() => _logger.Error("[ServerStatus] Periodic update failed", ex));
+                    var server = s;
+                    _addTimerSimple(delay, () =>
+                    {
+                        try
+                        {
+                            QueryAndStoreAsync(server, timeoutMs).GetAwaiter().GetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Debug($"[ServerStatus] Periodic query failed for {server.Ip}:{server.Port} - {ex.Message}");
+                        }
+                    });
+                    delay += 0.05f;
                 }
-            });
+                
+                _addTimerSimple(delay + 0.1f, () =>
+                {
+                    _logger.Debug($"[ServerStatus] Periodic update completed for {serversToQuery.Count} server(s)");
+                });
+            }
         }, TimerFlags.REPEAT));
     }
 
@@ -146,7 +157,7 @@ public sealed class ServerStatusService
         _timers.Clear();
     }
 
-    /// Принудительно запустить обновление кеша в фоне (например, после показа списка серверов)
+    /// Принудительно запустить обновление кеша (например, после показа списка серверов)
     public void TriggerBackgroundUpdate()
     {
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0)
@@ -156,37 +167,41 @@ public sealed class ServerStatusService
         var serverList = _config.Servers.List.ToList();
         var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000
             ? _config.Servers.QueryTimeoutMs.Value
-            : 1000;
+            : 500;
 
-        _ = Task.Run(async () =>
+        // Последовательные запросы через таймеры
+        float delay = 0.05f;
+        foreach (var s in serverList)
         {
-            try
+            var server = s;
+            _addTimerSimple(delay, () =>
             {
-                var tasks = serverList
-                    .Select(s => QueryAndStoreAsync(s, timeoutMs))
-                    .ToArray();
-
-                await Task.WhenAll(tasks).ConfigureAwait(false);
-                
-                // Подсчитываем онлайн/оффлайн серверов
-                int onlineCount = 0;
-                int offlineCount = 0;
-                lock (_cacheLock)
+                try
                 {
-                    foreach (var entry in _serverCache.Values)
-                    {
-                        if (entry.Online) onlineCount++;
-                        else offlineCount++;
-                    }
+                    QueryAndStoreAsync(server, timeoutMs).GetAwaiter().GetResult();
                 }
-                
-                var count = serverList.Count;
-                _postToMainThread(() => _logger.Debug($"[ServerStatus] Background update completed: {onlineCount} online, {offlineCount} offline (total: {count})"));
-            }
-            catch (Exception ex)
+                catch (Exception ex)
+                {
+                    _logger.Debug($"[ServerStatus] Background query failed for {server.Ip}:{server.Port} - {ex.Message}");
+                }
+            });
+            delay += 0.05f;
+        }
+        
+        // После всех запросов показываем статистику
+        _addTimerSimple(delay + 0.1f, () =>
+        {
+            int onlineCount = 0;
+            int offlineCount = 0;
+            lock (_cacheLock)
             {
-                _postToMainThread(() => _logger.Error("[ServerStatus] Background update failed", ex));
+                foreach (var entry in _serverCache.Values)
+                {
+                    if (entry.Online) onlineCount++;
+                    else offlineCount++;
+                }
             }
+            _logger.Debug($"[ServerStatus] Background update completed: {onlineCount} online, {offlineCount} offline (total: {serverList.Count})");
         });
     }
 
@@ -219,13 +234,12 @@ public sealed class ServerStatusService
                     UpdatedAtUtc = DateTime.UtcNow
                 };
             }
-        }
-        catch (Exception ex)
-        {
-            // Логируем через главный поток чтобы избежать проблем с CS2 API
-            var errorMsg = $"Query error {serverInfo.Ip}:{serverInfo.Port}";
-            _postToMainThread(() => _logger.Error(errorMsg, ex));
             
+            _logger.Debug($"[ServerStatus] {serverInfo.Ip}:{serverInfo.Port} - {(info != null ? "ONLINE" : "OFFLINE")}");
+        }
+        catch
+        {
+            // Не логируем детали - просто помечаем сервер как оффлайн
             lock (_cacheLock)
             {
                 var (chat, console) = BuildServerLines(serverInfo, null);
