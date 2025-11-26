@@ -31,7 +31,12 @@ public sealed class ConfigService
 
         if (!splitExists)
         {
-            // Иначе создаём split-конфиги по умолчанию
+            _logger.Info("═══════════════════════════════════════════════════════════════");
+            _logger.Info("  NotifyMessages - First Run Detected!");
+            _logger.Info("  Creating default configuration files...");
+            _logger.Info("═══════════════════════════════════════════════════════════════");
+            
+            // Создаём split-конфиги по умолчанию
             return CreateDefaultSplitConfigs(directory);
         }
 
@@ -41,7 +46,12 @@ public sealed class ConfigService
         var messages = LoadPartial(messagesPath);
         var servers = LoadPartial(serversPath);
 
-        return MergeParts(settings, ads, messages, servers);
+        var config = MergeParts(settings, ads, messages, servers);
+        
+        // Валидация и предупреждения
+        ValidateConfig(config, directory);
+        
+        return config;
     }
 
     /// Создаёт дефолтные split-конфиги и возвращает объединённую конфигурацию
@@ -505,7 +515,7 @@ public sealed class ConfigService
                 Enabled = false,
                 Interval = 125,
                 QueryTimeoutMs = 1000,
-                CacheTtlSeconds = 5,
+                CacheTtlSeconds = 10,
                 List = new System.Collections.Generic.List<ServerData>
                 {
                     new ServerData
@@ -525,14 +535,333 @@ public sealed class ConfigService
         var messagesPath = Path.Combine(directory, "Messages.json");
         var serversPath = Path.Combine(directory, "Servers.json");
 
-        var writeOptions = new JsonSerializerOptions { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+        var writeOptions = new JsonSerializerOptions 
+        { 
+            WriteIndented = true, 
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
+        
         File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, writeOptions));
         File.WriteAllText(adsPath, JsonSerializer.Serialize(ads, writeOptions));
         File.WriteAllText(messagesPath, JsonSerializer.Serialize(messages, writeOptions));
         File.WriteAllText(serversPath, JsonSerializer.Serialize(servers, writeOptions));
 
-        _logger.Info($"[NotifyMessages] Created default split configs at: {directory}");
+        // Создаём README с инструкциями
+        CreateConfigReadme(directory);
+
+        _logger.Info($"[NotifyMessages] ✓ Created default configuration files:");
+        _logger.Info($"  • Settings.json - Basic settings, localization, welcome messages");
+        _logger.Info($"  • Ads.json - Advertisement messages (interval: 60s)");
+        _logger.Info($"  • Messages.json - Join/Leave messages with GeoIP support");
+        _logger.Info($"  • Servers.json - Server monitoring (disabled by default)");
+        _logger.Info($"  • README.txt - Configuration guide");
+        _logger.Info($"Directory: {directory}");
+        _logger.Info("Use 'css_advert_reload' command to reload configs after editing.");
 
         return MergeParts(settings, ads, messages, servers);
+    }
+
+    private void ValidateConfig(Config config, string directory)
+    {
+        var warnings = new System.Collections.Generic.List<string>();
+        var info = new System.Collections.Generic.List<string>();
+
+        // Проверка базовых настроек
+        if (string.IsNullOrEmpty(config.DefaultLang))
+        {
+            warnings.Add("DefaultLang is not set. Using 'RU' as fallback.");
+        }
+
+        // Проверка WelcomeMessage
+        if (config.WelcomeMessage != null)
+        {
+            if (string.IsNullOrEmpty(config.WelcomeMessage.Message))
+            {
+                warnings.Add("WelcomeMessage.Message is empty. Players won't see welcome message.");
+            }
+            if (config.WelcomeMessage.DisplayDelay < 0 || config.WelcomeMessage.DisplayDelay > 60)
+            {
+                warnings.Add($"WelcomeMessage.DisplayDelay ({config.WelcomeMessage.DisplayDelay}s) is unusual. Recommended: 1-10 seconds.");
+            }
+        }
+
+        // Проверка рекламы
+        if (config.Ads != null && config.Ads.Count > 0)
+        {
+            info.Add($"✓ Loaded {config.Ads.Count} advertisement block(s)");
+            foreach (var ad in config.Ads)
+            {
+                if (ad.Interval < 1)
+                {
+                    warnings.Add($"Ad block has Interval < 1 second. This will be clamped to 1 second.");
+                }
+                if (ad.Messages == null || ad.Messages.Count == 0)
+                {
+                    warnings.Add("Ad block has no messages. It will be skipped.");
+                }
+            }
+        }
+        else
+        {
+            info.Add("ℹ No advertisement blocks configured (Ads.json is empty)");
+        }
+
+        // Проверка сообщений входа/выхода
+        if (config.JoinMessages != null && config.JoinMessages.Count > 0)
+        {
+            info.Add($"✓ Loaded JoinMessages for {config.JoinMessages.Count} language(s)");
+        }
+        else
+        {
+            info.Add("ℹ No JoinMessages configured. Players won't see join notifications.");
+        }
+
+        if (config.LeaveMessages != null && config.LeaveMessages.Count > 0)
+        {
+            info.Add($"✓ Loaded LeaveMessages for {config.LeaveMessages.Count} language(s)");
+        }
+        else
+        {
+            info.Add("ℹ No LeaveMessages configured. Players won't see leave notifications.");
+        }
+
+        // Проверка серверов
+        if (config.Servers != null)
+        {
+            if (config.Servers.Enabled)
+            {
+                if (config.Servers.List == null || config.Servers.List.Count == 0)
+                {
+                    warnings.Add("Server monitoring is ENABLED but no servers configured!");
+                }
+                else
+                {
+                    info.Add($"✓ Server monitoring ENABLED for {config.Servers.List.Count} server(s)");
+                    
+                    if (config.Servers.Interval < 5)
+                    {
+                        warnings.Add($"Servers.Interval ({config.Servers.Interval}s) is too low. Recommended: >= 5 seconds.");
+                    }
+                    
+                    if (config.Servers.QueryTimeoutMs < 200 || config.Servers.QueryTimeoutMs > 5000)
+                    {
+                        warnings.Add($"Servers.QueryTimeoutMs ({config.Servers.QueryTimeoutMs}ms) is unusual. Recommended: 500-2000ms.");
+                    }
+
+                    // Проверка каждого сервера
+                    for (int i = 0; i < config.Servers.List.Count; i++)
+                    {
+                        var server = config.Servers.List[i];
+                        if (string.IsNullOrEmpty(server.Ip))
+                        {
+                            warnings.Add($"Server #{i + 1}: IP is empty!");
+                        }
+                        if (server.Port <= 0 || server.Port > 65535)
+                        {
+                            warnings.Add($"Server #{i + 1}: Invalid port {server.Port}");
+                        }
+                        if (server.Ip == "127.0.0.1" && server.Port == 27015)
+                        {
+                            info.Add($"ℹ Server #{i + 1}: Using example values (127.0.0.1:27015). Don't forget to change!");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                info.Add("ℹ Server monitoring is DISABLED (Servers.Enabled = false)");
+            }
+        }
+
+        // Проверка локализации
+        if (config.LanguageMessages != null && config.LanguageMessages.Count > 0)
+        {
+            info.Add($"✓ Loaded {config.LanguageMessages.Count} localization tag(s)");
+        }
+        else
+        {
+            warnings.Add("No LanguageMessages configured. Localization tags won't work!");
+        }
+
+        // Вывод результатов
+        if (info.Count > 0)
+        {
+            _logger.Info("═══ Configuration Loaded ═══");
+            foreach (var msg in info)
+            {
+                _logger.Info(msg);
+            }
+        }
+
+        if (warnings.Count > 0)
+        {
+            _logger.Info("⚠ Configuration Warnings:");
+            foreach (var msg in warnings)
+            {
+                _logger.Info($"  ⚠ {msg}");
+            }
+            _logger.Info($"Configuration directory: {directory}");
+        }
+    }
+
+    private void CreateConfigReadme(string directory)
+    {
+        var readmePath = Path.Combine(directory, "README.txt");
+        var content = @"═══════════════════════════════════════════════════════════════════════════════
+    NotifyMessages Plugin - Configuration Guide
+═══════════════════════════════════════════════════════════════════════════════
+
+This folder contains 4 configuration files:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. Settings.json - Main Settings                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • Debug: Enable detailed logging (true/false)                              │
+│ • PrintToCenterHtml: Use HTML for center messages (true/false)             │
+│ • HtmlCenterDuration: How long HTML center shows (seconds)                 │
+│ • ShowHtmlWhenDead: Show HTML to dead players (true/false)                 │
+│ • DefaultLang: Default language (RU/US/UA/PL/DE)                           │
+│                                                                             │
+│ • WelcomeMessage: Player welcome message                                   │
+│   - MessageType: 0=Chat, 1=Center, 2=CenterHtml, 3=Console                │
+│   - Message: Text with placeholders                                        │
+│   - DisplayDelay: Delay before showing (seconds)                           │
+│                                                                             │
+│ • LanguageMessages: Translations for all languages                         │
+│   Format: ""tag"": { ""RU"": ""текст"", ""US"": ""text"", ... }              │
+│                                                                             │
+│ • MapsName: Replace map names                                              │
+│   Example: ""de_dust2"": ""DUST 2""                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. Ads.json - Advertisement Messages                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • Ads: Array of advertisement blocks                                       │
+│   - Interval: Show every N seconds (minimum 1)                             │
+│   - Messages: Array of messages (rotate automatically)                     │
+│                                                                             │
+│ Each message can have multiple channels:                                   │
+│   { ""Chat"": ""text"" }                    - Show in chat                   │
+│   { ""Center"": ""text"" }                  - Show in center                │
+│   { ""Console"": ""text"" }                 - Show in console               │
+│   { ""Chat"": ""..."", ""Center"": ""..."" }  - Show in both!                │
+│                                                                             │
+│ Use {tags} from LanguageMessages for localization!                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3. Messages.json - Join/Leave Messages                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • JoinMessages: Messages when player connects                              │
+│ • LeaveMessages: Messages when player disconnects                          │
+│                                                                             │
+│ Format: { ""RU"": [""msg1"", ""msg2"", ...], ""US"": [...] }                  │
+│                                                                             │
+│ Random message is picked from array for variety!                           │
+│                                                                             │
+│ Available placeholders:                                                    │
+│   {PLAYERNAME} - Player's name                                             │
+│   {COUNTRY}    - Country (detected by GeoIP)                               │
+│   {CITY}       - City (detected by GeoIP)                                  │
+│   {connected}  - Localized ""Connected"" prefix                             │
+│   {disconnected} - Localized ""Disconnected"" prefix                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4. Servers.json - Server Monitoring                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ • TitleAnnounceServers: Title for server list                              │
+│ • Servers:                                                                 │
+│   - Enabled: Enable server monitoring (true/false)                         │
+│   - Interval: Query every N seconds (minimum 5)                            │
+│   - QueryTimeoutMs: Timeout for A2S query (200-5000 ms)                   │
+│   - CacheTtlSeconds: Cache lifetime (0-60 seconds)                         │
+│   - List: Array of servers to monitor                                      │
+│                                                                             │
+│ Each server:                                                               │
+│   - Ip: IP address or hostname                                             │
+│   - Port: Server port                                                      │
+│   - MessageTemplate: Chat message template                                 │
+│   - MessageTemplateConsole: Console message template                       │
+│   - MaxPlayersFallback: Max players if server is offline                   │
+│                                                                             │
+│ Available placeholders:                                                    │
+│   {SERVER_IP}         - Server IP                                          │
+│   {SERVER_PORT}       - Server port                                        │
+│   {SERVER_MAP}        - Current map (or ""OFFLINE"")                        │
+│   {SERVER_PLAYERS}    - Current players                                    │
+│   {SERVER_MAXPLAYERS} - Maximum players                                    │
+│                                                                             │
+│ NOTE: Monitoring is DISABLED by default. Set Enabled: true to activate!   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+    Color Tags (use in any message)
+═══════════════════════════════════════════════════════════════════════════════
+
+{DEFAULT} or {WHITE}  - White/default       {RED}            - Red
+{GREEN}  or {LIME}    - Green               {BLUE}           - Blue
+{YELLOW} or {GOLD}    - Yellow              {ORANGE}         - Orange
+{LIGHTBLUE}           - Light blue          {DARKBLUE}       - Dark blue
+{PURPLE} or {MAGENTA} - Purple              {LIGHTPURPLE}    - Light purple
+{GREY}   or {GRAY}    - Grey                {SILVER}         - Silver
+{DARKRED}             - Dark red            {OLIVE}          - Olive
+{LIGHTYELLOW}         - Light yellow        {BLUEGREY}       - Blue-grey
+
+{SPACE}               - Wide space for alignment
+\n                    - New line
+
+═══════════════════════════════════════════════════════════════════════════════
+    System Placeholders (available everywhere)
+═══════════════════════════════════════════════════════════════════════════════
+
+{MAP}        - Current map name (or custom name from MapsName)
+{TIME}       - Current time (HH:mm:ss)
+{DATE}       - Current date (dd.MM.yyyy)
+{SERVERNAME} - Server hostname
+{IP}         - Server IP
+{PORT}       - Server port
+{MAXPLAYERS} - Max player slots
+{PLAYERS}    - Current online players
+
+═══════════════════════════════════════════════════════════════════════════════
+    Commands
+═══════════════════════════════════════════════════════════════════════════════
+
+css_servers                - Show server list (for players)
+css_announce_restart <sec> - Announce restart in N seconds (1-3600)
+css_announce_update <sec>  - Announce update in N seconds (1-3600)
+css_advert_reload          - Reload all configs (requires @css/root)
+
+═══════════════════════════════════════════════════════════════════════════════
+    Tips
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ All queries run ASYNCHRONOUSLY - no server lag!
+✓ Messages are CACHED by language - better performance!
+✓ Use 'css_advert_reload' after editing - no restart needed!
+✓ GeoIP auto-detects player's country for language selection
+✓ Server monitoring uses A2S protocol (Source engine standard)
+✓ HTML center messages support rich formatting
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Version: 2.0.0
+Author: Armatura
+More info: Check README.md in plugin folder
+
+═══════════════════════════════════════════════════════════════════════════════
+";
+
+        try
+        {
+            File.WriteAllText(readmePath, content, System.Text.Encoding.UTF8);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Failed to create README.txt", ex);
+        }
     }
 }
