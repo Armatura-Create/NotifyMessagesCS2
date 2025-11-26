@@ -718,7 +718,7 @@ public sealed class ConfigService
 !servers или css_servers          - Показать список серверов с онлайном
 
 Для администраторов:
-css_reload_advert                 - Перезагрузить все конфиги без перезапуска
+css_reload_advert                 - Перезагрузить все 4 конфига без перезапуска
 css_announce_restart <секунды>    - Объявить рестарт (1-3600 сек)
 css_announce_update <секунды>     - Объявить обновление (1-3600 сек)
 

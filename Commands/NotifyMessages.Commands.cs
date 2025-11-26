@@ -89,10 +89,10 @@ public partial class NotifyMessages
     }
 
     [RequiresPermissions("@css/root")]
-    [ConsoleCommand("css_advert_reload", "configuration restart")]
+    [ConsoleCommand("css_reload_advert", "Reload all configuration files")]
     public void ReloadAdvertConfig(CCSPlayerController? controller, CommandInfo command)
     {
-        _logger.Info($"[COMMAND] css_advert_reload executed by {controller?.PlayerName ?? "Console"}");
+        _logger.Info($"[COMMAND] css_reload_advert executed by {controller?.PlayerName ?? "Console"}");
         
         Config = _configService.LoadOrCreate(Application.RootDirectory);
         _messageProcessor = new MessageProcessor(Config, steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
