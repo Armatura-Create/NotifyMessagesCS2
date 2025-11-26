@@ -36,6 +36,25 @@ public sealed class DisplayService
     public void Print(HudDestination? destination, string message,
         CCSPlayerController? connectPlayer = null, bool privateMsg = false)
     {
+        // Debug логирование - показываем что отправляем
+        if (_config.Debug)
+        {
+            var destinationType = destination switch
+            {
+                HudDestination.Chat => "CHAT",
+                HudDestination.Center => "CENTER",
+                HudDestination.Console => "CONSOLE",
+                _ => "UNKNOWN"
+            };
+
+            var target = connectPlayer != null && privateMsg 
+                ? $"player '{connectPlayer.PlayerName}'" 
+                : "all players";
+
+            var cleanMessage = TextFormatter.StripColorCodes(message);
+            _logger.Debug($"[{destinationType}] → {target}: {cleanMessage}");
+        }
+
         if (connectPlayer != null && connectPlayer is { IsValid: true, IsBot: false } && privateMsg)
         {
             var processed = _messageProcessor.ProcessMessage(message, connectPlayer.SteamID);
@@ -56,14 +75,25 @@ public sealed class DisplayService
                         connectPlayer.PrintToCenter(processed);
                     break;
             }
+
+            // Debug: показываем обработанное сообщение для конкретного игрока
+            if (_config.Debug)
+            {
+                var cleanProcessed = TextFormatter.StripColorCodes(processed);
+                var isoCode = _messageProcessor.GetIsoCodeBySteamId(connectPlayer.SteamID) ?? _config.DefaultLang ?? "default";
+                _logger.Debug($"  ↳ Processed for {connectPlayer.PlayerName} ({isoCode}): {cleanProcessed}");
+            }
         }
         else
         {
             // Кешируем обработанные сообщения по ISO-коду для оптимизации
             var processedMessages = new Dictionary<string, string>();
+            var playerCount = 0;
             
             foreach (var player in Utilities.GetPlayers().Where(u => !privateMsg && !u.IsBot && u.IsValid))
             {
+                playerCount++;
+                
                 // Получаем ISO-код для кеширования
                 var isoCode = _messageProcessor.GetIsoCodeBySteamId(player.SteamID) ?? _config.DefaultLang ?? "default";
                 
@@ -71,6 +101,13 @@ public sealed class DisplayService
                 {
                     processed = _messageProcessor.ProcessMessage(message, player.SteamID);
                     processedMessages[isoCode] = processed;
+                    
+                    // Debug: показываем обработанное сообщение для языка (только один раз на язык)
+                    if (_config.Debug)
+                    {
+                        var cleanProcessed = TextFormatter.StripColorCodes(processed);
+                        _logger.Debug($"  ↳ Processed for language [{isoCode}]: {cleanProcessed}");
+                    }
                 }
 
                 switch (destination)
@@ -90,12 +127,12 @@ public sealed class DisplayService
                         break;
                 }
             }
-        }
 
-        if (!_config.Debug) return;
-        {
-            var processed = _messageProcessor.ProcessMessage(message, 0);
-            _logger.Debug("[ADS DEBUG] " + TextFormatter.StripColorCodes(processed));
+            // Debug: показываем статистику отправки
+            if (_config.Debug && playerCount > 0)
+            {
+                _logger.Debug($"  ✓ Sent to {playerCount} player(s), {processedMessages.Count} unique language(s)");
+            }
         }
     }
 

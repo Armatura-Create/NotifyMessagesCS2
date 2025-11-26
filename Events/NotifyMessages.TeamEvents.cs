@@ -16,6 +16,13 @@ public partial class NotifyMessages
         var newTeam = ev.Team;
         var oldTeam = ev.Oldteam;
 
+        if (Config.Debug)
+        {
+            var oldTeamName = GetTeamName(oldTeam);
+            var newTeamName = GetTeamName(newTeam);
+            _logger.Info($"[EVENT] {player.PlayerName} team change: {oldTeamName} → {newTeamName}");
+        }
+
         if (oldTeam == 0 && (newTeam == 1 || newTeam == 2 || newTeam == 3))
         {
             AnnouncePlayerTeamJoin(player, newTeam);
@@ -28,6 +35,18 @@ public partial class NotifyMessages
         }
 
         return HookResult.Continue;
+    }
+
+    private string GetTeamName(int team)
+    {
+        return team switch
+        {
+            0 => "None",
+            1 => "Spectators",
+            2 => "Terrorists",
+            3 => "Counter-Terrorists",
+            _ => $"Unknown({team})"
+        };
     }
 
     private void AnnounceTeamChange(CCSPlayerController player, int oldTeam, int newTeam)

@@ -16,8 +16,17 @@ public partial class NotifyMessages
         var player = ev.Userid;
         if (player is null || player.IsBot) return HookResult.Continue;
 
+        if (Config.Debug)
+        {
+            _logger.Info($"[EVENT] Player disconnected: {player.PlayerName} (SteamID: {player.SteamID})");
+        }
+
         if (_sessionService.TryKillAndRemoveConnectionTimer(player.SteamID))
         {
+            if (Config.Debug)
+            {
+                _logger.Debug($"  ↳ Killed connection timer for {player.PlayerName}");
+            }
         }
         else if (_sessionService.IsFullyConnected(player.SteamID))
         {
@@ -69,6 +78,11 @@ public partial class NotifyMessages
         if (player is null || !player.IsValid || player.IsBot)
             return HookResult.Continue;
 
+        if (Config.Debug)
+        {
+            _logger.Info($"[EVENT] Player connected: {player.PlayerName} (SteamID: {player.SteamID})");
+        }
+
         _sessionService.AddFullyConnected(player.SteamID);
 
         _sessionService.TryKillAndRemoveConnectionTimer(player.SteamID);
@@ -81,6 +95,11 @@ public partial class NotifyMessages
 
                 _geoIpService.TryGetPlayerIso(player.SteamID, out var country);
                 _geoIpService.TryGetPlayerCity(player.SteamID, out var city);
+
+                if (Config.Debug)
+                {
+                    _logger.Info($"[GeoIP] {player.PlayerName} location: {city ?? "Unknown"}, {country ?? "Unknown"}");
+                }
 
                 foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
                 {

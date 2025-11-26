@@ -20,6 +20,11 @@ public partial class NotifyMessages
         if (controller == null) return;
         if (Config.Servers == null || !Config.Servers.Enabled || Config.Servers.List.Count == 0) return;
 
+        if (Config.Debug)
+        {
+            _logger.Info($"[COMMAND] css_servers executed by {controller.PlayerName}");
+        }
+
         // Показываем текущие данные из кеша
         _serverStatusService.AnnounceToPlayer(controller, _messageProcessor, _displayService.Print);
         
@@ -69,6 +74,8 @@ public partial class NotifyMessages
     [ConsoleCommand("css_advert_reload", "configuration restart")]
     public void ReloadAdvertConfig(CCSPlayerController? controller, CommandInfo command)
     {
+        _logger.Info($"[COMMAND] css_advert_reload executed by {controller?.PlayerName ?? "Console"}");
+        
         Config = _configService.LoadOrCreate(Application.RootDirectory);
         _messageProcessor = new MessageProcessor(Config, steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
         _displayService.Update(Config, _messageProcessor);
