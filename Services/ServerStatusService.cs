@@ -40,9 +40,27 @@ public sealed class ServerStatusService
     /// Единоразовый начальный опрос (без анонса) - выполняется последовательно через таймеры
     public void InitialQuery()
     {
-        if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
+        if (_config.Servers == null)
+        {
+            _logger.Debug("[ServerStatus] InitialQuery skipped: Servers config is null");
+            return;
+        }
         
-        // Запускаем через таймеры последовательно - по 0.05 сек на каждый сервер
+        if (!_config.Servers.Enabled)
+        {
+            _logger.Debug("[ServerStatus] InitialQuery skipped: Servers.Enabled = false");
+            return;
+        }
+        
+        if (_config.Servers.List.Count == 0)
+        {
+            _logger.Debug("[ServerStatus] InitialQuery skipped: Servers.List is empty");
+            return;
+        }
+        
+        _logger.Debug($"[ServerStatus] InitialQuery started for {_config.Servers.List.Count} server(s)");
+        
+        // Запускаем через таймеры последовательно - по 0.1 сек на каждый сервер
         // Это избегает проблем с Task.Run и cross-thread доступом
         var serverList = _config.Servers.List.ToList();
         var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 
@@ -283,17 +301,34 @@ public sealed class ServerStatusService
     public void AnnounceToPlayer(CCSPlayerController controller, MessageProcessor processor,
         Action<HudDestination?, string, CCSPlayerController?, bool> print)
     {
-        if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
+        if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0)
+        {
+            _logger.Debug($"[ServerStatus] AnnounceToPlayer called but servers disabled or empty");
+            return;
+        }
+
+        _logger.Debug($"[ServerStatus] Showing server list to {controller.PlayerName}");
 
         if (!string.IsNullOrEmpty(_config.TitleAnnounceServers))
             print(HudDestination.Chat, _config.TitleAnnounceServers!, controller, true);
 
         var snapshot = GetSnapshot();
+        _logger.Debug($"[ServerStatus] Cache snapshot contains {snapshot.Count} server(s)");
+        
+        if (snapshot.Count == 0)
+        {
+            _logger.Debug($"[ServerStatus] Cache is empty, servers may not have been queried yet");
+            return;
+        }
+
         foreach (var entry in snapshot.OrderBy(v => v.Chat))
         {
             var msg = processor.ProcessMessage(entry.Chat, controller.SteamID);
             if (!string.IsNullOrEmpty(msg))
+            {
+                _logger.Debug($"[ServerStatus] Sending chat: {msg}");
                 print(HudDestination.Chat, msg, controller, true);
+            }
         }
 
         foreach (var entry in snapshot)
@@ -302,5 +337,7 @@ public sealed class ServerStatusService
             if (!string.IsNullOrEmpty(msg))
                 print(HudDestination.Console, msg, controller, true);
         }
+        
+        _logger.Debug($"[ServerStatus] Finished showing server list");
     }
 }

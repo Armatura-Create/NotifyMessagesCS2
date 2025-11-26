@@ -18,12 +18,30 @@ public partial class NotifyMessages
     public void ShowServersCommand(CCSPlayerController? controller, CommandInfo command)
     {
         if (controller == null) return;
-        if (Config.Servers == null || !Config.Servers.Enabled || Config.Servers.List.Count == 0) return;
-
-        if (Config.Debug)
+        
+        _logger.Debug($"[COMMAND] css_servers called by {controller.PlayerName}");
+        
+        if (Config.Servers == null)
         {
-            _logger.Info($"[COMMAND] css_servers executed by {controller.PlayerName}");
+            _logger.Debug($"[COMMAND] Config.Servers is null");
+            return;
         }
+        
+        if (!Config.Servers.Enabled)
+        {
+            _logger.Debug($"[COMMAND] Config.Servers.Enabled = false");
+            controller.PrintToChat("[Servers] Server monitoring is disabled in Servers.json");
+            return;
+        }
+        
+        if (Config.Servers.List.Count == 0)
+        {
+            _logger.Debug($"[COMMAND] Config.Servers.List is empty");
+            controller.PrintToChat("[Servers] No servers configured in Servers.json");
+            return;
+        }
+
+        _logger.Debug($"[COMMAND] Showing {Config.Servers.List.Count} server(s) from cache");
 
         // Показываем текущие данные из кеша
         _serverStatusService.AnnounceToPlayer(controller, _messageProcessor, _displayService.Print);

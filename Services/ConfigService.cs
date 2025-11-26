@@ -134,9 +134,9 @@ public sealed class ConfigService
         
         try
         {
-            var json = File.ReadAllText(path);
+        var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<ServersConfig>(json,
-                new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
+            new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
         }
         catch (Exception ex)
         {
@@ -516,10 +516,10 @@ public sealed class ConfigService
                     MessageTemplateConsole = "Server 1: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | Players: {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
                     MaxPlayersFallback = 32
                 },
-                new ServerData
-                {
+                    new ServerData
+                    {
                     Ip = "123.45.67.90",
-                    Port = 27015,
+                        Port = 27015,
                     MessageTemplate = "{LIGHTBLUE}[SERVER 2]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}",
                     MessageTemplateConsole = "Server 2: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | Players: {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
                     MaxPlayersFallback = 32
@@ -711,14 +711,53 @@ public sealed class ConfigService
 }
 
 ═══════════════════════════════════════════════════════════════════════════════
-💡 Советы
+⚙️ Команды
 ═══════════════════════════════════════════════════════════════════════════════
 
-1. Перезагрузка конфигов: используйте команду `css_reload_advert` в консоли
-2. Проверка онлайна серверов: команда `!servers` или `css_announce_servers`
-3. Тестирование команд рестарта: `css_announce_restart <секунды>`
-4. Все переводы в одном месте (Messages.json) - легко поддерживать!
-5. Включите Debug=true для просмотра детальных логов в консоли
+Для игроков:
+!servers или css_servers          - Показать список серверов с онлайном
+
+Для администраторов:
+css_reload_advert                 - Перезагрузить все конфиги без перезапуска
+css_announce_restart <секунды>    - Объявить рестарт (1-3600 сек)
+css_announce_update <секунды>     - Объявить обновление (1-3600 сек)
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 Советы и устранение проблем
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ ОСНОВНОЕ:
+1. Включите Debug=true в Settings.json для детальных логов
+2. После изменения конфигов используйте `css_reload_advert`
+3. Все переводы в Messages.json - одно место для всех языков!
+4. В Servers.json установите Enabled=true чтобы включить мониторинг
+
+⚠ НЕ РАБОТАЕТ !servers?
+1. Проверьте Servers.json: ""Enabled"": true
+2. Проверьте что есть серверы в ""List""
+3. Дождитесь 1-2 секунды после запуска (идёт начальный опрос)
+4. Смотрите Debug логи в консоли сервера
+5. Выполните css_reload_advert для перезагрузки
+
+⚠ НЕТ DEBUG ЛОГОВ?
+1. Settings.json: ""Debug"": true
+2. После изменения выполните: css_reload_advert
+3. Логи показываются только в консоли сервера (не в игре!)
+
+⚠ СЕРВЕРЫ ПОКАЗЫВАЮТ OFFLINE?
+1. Проверьте IP и порт сервера
+2. Увеличьте QueryTimeoutMs (например до 1000)
+3. Убедитесь что сервер доступен и отвечает на A2S запросы
+
+═══════════════════════════════════════════════════════════════════════════════
+📌 Важные замечания
+═══════════════════════════════════════════════════════════════════════════════
+
+• Для работы !servers ОБЯЗАТЕЛЬНО установите ""Enabled"": true в Servers.json
+• Запросы к серверам выполняются последовательно (может быть задержка 1-2 сек)
+• Кеш обновляется автоматически по интервалу или после команды !servers
+• Команда css_reload_advert перезагружает ВСЕ 4 конфига сразу
+• Изменения в Messages.json применяются сразу после css_reload_advert
 
 ═══════════════════════════════════════════════════════════════════════════════
 ";
