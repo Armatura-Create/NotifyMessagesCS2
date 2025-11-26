@@ -140,8 +140,11 @@ public sealed class DisplayService
                 else
                 {
                     // Показываем что сообщение было вызвано, но игроков нет
-                    var cleanMessage = TextFormatter.StripColorCodes(message);
-                    _logger.Debug($"[{destinationType}] → No valid players online. Message: {cleanMessage}");
+                    // Обрабатываем с дефолтным языком для демонстрации
+                    var processed = _messageProcessor.ProcessMessage(message, 0); // 0 = используется DefaultLang
+                    var cleanMessage = TextFormatter.StripColorCodes(processed);
+                    var defaultLang = _config.DefaultLang ?? "default";
+                    _logger.Debug($"[{destinationType}] → No valid players online. Message [{defaultLang}]: {cleanMessage}");
                 }
             }
         }
