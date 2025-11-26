@@ -114,7 +114,7 @@ public sealed class ConfigService
         // Default values are taken from the legacy single-file config and split by domains
         var settings = new Config
         {
-            Debug = false,
+            Debug = true,  // Enable debug logging by default
             PrintToCenterHtml = false,
             ShowHtmlWhenDead = null,
             HtmlCenterDuration = null,

@@ -22,6 +22,9 @@ public sealed class DisplayService
         _config = config;
         _messageProcessor = messageProcessor;
         _logger = logger;
+        
+        // Диагностическое сообщение для проверки Debug флага
+        _logger.Debug($"[DisplayService] Initialized with Debug={_config.Debug}");
     }
 
     public void Update(Config config, MessageProcessor messageProcessor)
@@ -30,6 +33,9 @@ public sealed class DisplayService
         // Состояние пользователей сохраняем
         _config = config;
         _messageProcessor = messageProcessor;
+        
+        // Диагностическое сообщение для проверки Debug флага после обновления
+        _logger.Debug($"[DisplayService] Config updated, Debug={_config.Debug}");
     }
 
     // Унифицированный вывод строки с обработкой локализации/цветов
@@ -111,7 +117,7 @@ public sealed class DisplayService
             }
 
             // Debug: показываем обработанные сообщения и статистику отправки
-            if (_config.Debug && playerCount > 0)
+            if (_config.Debug)
             {
                 var destinationType = destination switch
                 {
@@ -121,12 +127,21 @@ public sealed class DisplayService
                     _ => "UNKNOWN"
                 };
                 
-                _logger.Debug($"[{destinationType}] → {playerCount} player(s), {processedMessages.Count} language(s):");
-                
-                foreach (var (isoCode, processed) in processedMessages)
+                if (playerCount > 0)
                 {
-                    var cleanProcessed = TextFormatter.StripColorCodes(processed);
-                    _logger.Debug($"  [{isoCode}] {cleanProcessed}");
+                    _logger.Debug($"[{destinationType}] → {playerCount} player(s), {processedMessages.Count} language(s):");
+                    
+                    foreach (var (isoCode, processed) in processedMessages)
+                    {
+                        var cleanProcessed = TextFormatter.StripColorCodes(processed);
+                        _logger.Debug($"  [{isoCode}] {cleanProcessed}");
+                    }
+                }
+                else
+                {
+                    // Показываем что сообщение было вызвано, но игроков нет
+                    var cleanMessage = TextFormatter.StripColorCodes(message);
+                    _logger.Debug($"[{destinationType}] → No valid players online. Message: {cleanMessage}");
                 }
             }
         }
