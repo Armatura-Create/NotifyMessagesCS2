@@ -141,7 +141,7 @@ public sealed class DisplayService
             user = _users[player.Slot];
         }
 
-        user.HtmlPrint = true;
+        user!.HtmlPrint = true;
         user.PrintTime = 0;
         user.Message = message;
     }

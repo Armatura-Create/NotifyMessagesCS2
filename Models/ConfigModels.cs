@@ -61,7 +61,7 @@ public class ServerInfo
     public float Interval { get; set; } // период опроса
     public int? QueryTimeoutMs { get; set; } // 200–5000 рекомендовано
     public int? CacheTtlSeconds { get; set; } // 0–60
-    public List<ServerData> List { get; set; }
+    public List<ServerData> List { get; set; } = new();
 }
 
 public class ServerData
