@@ -42,13 +42,17 @@ public sealed class ServerStatusService
     {
         if (_config.Servers == null || !_config.Servers.Enabled || _config.Servers.List.Count == 0) return;
         
-        // Копируем данные из конфига в главном потоке
-        var serverList = _config.Servers.List.ToList();
-        var timeoutMs = _config.Servers.QueryTimeoutMs is > 0 and <= 5000 ? _config.Servers.QueryTimeoutMs.Value : 1000;
-        
-        // Запускаем через таймер с задержкой 0.1 сек, чтобы плагин успел полностью загрузиться
-        _addTimerSimple(0.1f, () =>
+        // Запускаем через таймер с задержкой 1.0 сек, чтобы плагин успел полностью загрузиться
+        _addTimerSimple(1.0f, () =>
         {
+            // Копируем данные из конфига в главном потоке (внутри callback таймера)
+            var serverList = _config.Servers?.List?.ToList();
+            var timeoutMs = _config.Servers?.QueryTimeoutMs is > 0 and <= 5000 
+                ? _config.Servers.QueryTimeoutMs.Value 
+                : 1000;
+            
+            if (serverList == null || serverList.Count == 0) return;
+            
             _ = Task.Run(async () =>
             {
                 try
