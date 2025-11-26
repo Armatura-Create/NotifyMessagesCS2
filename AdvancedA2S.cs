@@ -74,9 +74,10 @@ public static class AdvancedA2S
         {
             return null;
         }
-        catch (Exception ex)
+        catch
         {
-            LogService.Error("[AdvancedA2S] Error", ex);
+            // Не логируем здесь - исключение обрабатывается выше в ServerStatusService
+            // Логирование из асинхронного контекста может вызвать ошибки с CS2 API
             return null;
         }
     }
