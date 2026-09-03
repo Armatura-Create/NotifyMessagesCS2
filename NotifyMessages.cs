@@ -1,3 +1,5 @@
+using System;
+using System.Reflection;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
@@ -11,7 +13,32 @@ public partial class NotifyMessages : BasePlugin
 {
     public override string ModuleAuthor => "Armatura";
     public override string ModuleName => "NotifyMessages";
-    public override string ModuleVersion => "v2.1.0";
+    // Версия НЕ хардкодится: берётся из метаданных сборки, которые проставляет MSBuild
+    // из <Version>, а в релизе — из тега (см. .github/workflows/release.yml).
+    // Раньше её надо было помнить поднять руками, и релиз v2.1.1 уехал с "v2.1.0" внутри.
+    public override string ModuleVersion => PluginVersion;
+
+    private static readonly string PluginVersion = ResolveModuleVersion(typeof(NotifyMessages).Assembly);
+
+    /// Версия сборки в виде "vX.Y.Z" (с суффиксом pre-release, если он есть).
+    /// InformationalVersion может нести хвост "+Sha.abc123" от SourceLink — его отрезаем.
+    internal static string ResolveModuleVersion(Assembly assembly) => FormatModuleVersion(
+        assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
+        assembly.GetName().Version);
+
+    /// Чистая часть резолва — вынесена ради тестов.
+    internal static string FormatModuleVersion(string? informationalVersion, Version? assemblyVersion)
+    {
+        if (!string.IsNullOrWhiteSpace(informationalVersion))
+        {
+            var plus = informationalVersion.IndexOf('+');
+            var trimmed = plus >= 0 ? informationalVersion[..plus] : informationalVersion;
+            if (!string.IsNullOrWhiteSpace(trimmed))
+                return "v" + trimmed.Trim();
+        }
+
+        return assemblyVersion == null ? "v0.0.0" : "v" + assemblyVersion.ToString(3);
+    }
 
     // Задержка перед сообщением о входе — игрок должен успеть догрузиться
     private const float JoinAnnounceDelaySeconds = 3.0f;

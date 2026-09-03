@@ -170,8 +170,18 @@ CS2MenuManager), в самом CSSharp их нет. Примитив `CPointWorl
 
 ## Версии
 
-`ModuleVersion` в `NotifyMessages.cs` и `<Version>` в `.csproj` должны совпадать
-(сейчас `2.1.0`). При релизе поднимай обе.
+**Версию руками нигде не поднимаем.** `ModuleVersion` не литерал: он резолвится из
+`AssemblyInformationalVersionAttribute` собранной сборки (`ResolveModuleVersion` /
+`FormatModuleVersion` в `NotifyMessages.cs`, хвост `+sha` от SourceLink отрезается).
+
+Источник версии:
+- локальная сборка — `<Version>` в `.csproj` (сейчас `2.1.1-fix`), просто база для разработки;
+- релиз — **тег**: `release.yml` вычисляет `VERSION=${TAG#v}` и передаёт `-p:Version=` в сборку
+  и упаковку, а затем проверяет, что версия реально попала в DLL.
+
+Реальный инцидент, из-за которого так сделано: релиз `v2.1.1` уехал с `ModuleVersion => "v2.1.0"`,
+потому что число надо было помнить поднять в двух местах. Возвращать литерал нельзя —
+`ModuleVersionTests` это ловит.
 
 ## Граф проекта
 

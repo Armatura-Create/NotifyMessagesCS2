@@ -385,8 +385,13 @@ above the CounterStrikeSharp build the plugin is compiled against.
   with `NotifyMessages.zip` attached
 
 ```bash
-git tag v2.1.0 && git push origin v2.1.0
+git tag v2.1.1 && git push origin v2.1.1
 ```
+
+The tag is the single source of truth for the version: the workflow derives it from the tag name
+(`v2.1.1` → `2.1.1`), passes it to the build, and the plugin reports it as its `ModuleVersion` —
+nothing has to be bumped by hand in the source. The workflow then verifies that the version really
+made it into the built DLL.
 
 A release is not published if the tests fail. The `MAXMIND_LICENSE_KEY` repository secret is
 optional — without it the archive ships the GeoLite2 databases committed under `GeoIP/`.

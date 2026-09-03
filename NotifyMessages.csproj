@@ -6,7 +6,9 @@
     <Nullable>enable</Nullable>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <RootNamespace>NotifyMessages</RootNamespace>
-    <Version>2.1.0</Version>
+    <!-- База для локальных сборок. В релизе перекрывается тегом:
+         dotnet build -p:Version=$(тег без 'v') — см. .github/workflows/release.yml -->
+    <Version>2.1.1-fix</Version>
     <AssemblyName>NotifyMessages</AssemblyName>
     <Authors>Armatura</Authors>
     <Copyright>Copyright (C) 2025-2026 Armatura</Copyright>

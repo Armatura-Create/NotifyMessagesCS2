@@ -22,11 +22,25 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # Версия плагина берётся из тега — единственный источник правды.
+      # ModuleVersion читает её из метаданных сборки, руками нигде поднимать не нужно.
+      - name: Resolve version from tag
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::не удалось вычислить версию из тега '$TAG'"
+            exit 1
+          fi
+          echo "PLUGIN_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Тег $TAG -> версия $VERSION"
+
       - name: Restore
         run: dotnet restore NotifyMessages.sln
 
       - name: Build
-        run: dotnet build NotifyMessages.sln -c Release --no-restore
+        run: dotnet build NotifyMessages.sln -c Release --no-restore -p:Version=$PLUGIN_VERSION
 
       # Релиз не уезжает, если тесты красные
       - name: Test
@@ -37,7 +51,7 @@ jobs:
       - name: Package (Release)
         env:
           MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
-        run: dotnet build NotifyMessages.csproj -c Release --no-incremental
+        run: dotnet build NotifyMessages.csproj -c Release --no-incremental -p:Version=$PLUGIN_VERSION
 
       - name: Verify artifact
         run: |
@@ -47,6 +61,19 @@ jobs:
           unzip -l "$ZIP"
           unzip -l "$ZIP" | grep -q 'addons/counterstrikesharp/plugins/NotifyMessages/NotifyMessages.dll' \
             || { echo "::error::в архиве нет NotifyMessages.dll по ожидаемому пути"; exit 1; }
+
+      # Плагин должен представляться серверу ровно той версией, что стоит в теге.
+      # ModuleVersion читает InformationalVersion, поэтому ищем её прямо в собранной DLL.
+      - name: Verify plugin version matches tag
+        run: |
+          set -euo pipefail
+          DLL=bin/Release/net10.0/NotifyMessages.dll
+          if grep -a -q -F "$PLUGIN_VERSION" "$DLL"; then
+            echo "OK: версия $PLUGIN_VERSION зашита в $DLL"
+          else
+            echo "::error::в $DLL нет версии $PLUGIN_VERSION — ModuleVersion уедет мимо тега"
+            exit 1
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
