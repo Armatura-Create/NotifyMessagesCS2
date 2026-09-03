@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Net;
 using MaxMind.GeoIP2;
 
@@ -14,9 +15,10 @@ public sealed class GeoIpService : IDisposable
     private DatabaseReader? _countryDbReader;
     private DatabaseReader? _cityDbReader;
 
-    // Per-player geo cache moved from NotifyMessages
-    private readonly System.Collections.Generic.Dictionary<ulong, string> _playerIsoCode = new();
-    private readonly System.Collections.Generic.Dictionary<ulong, string> _playerCity = new();
+    // Per-player geo cache moved from NotifyMessages.
+    // Concurrent: к кешу обращаются и игровые события, и колбэки таймеров.
+    private readonly ConcurrentDictionary<ulong, string> _playerIsoCode = new();
+    private readonly ConcurrentDictionary<ulong, string> _playerCity = new();
 
     public GeoIpService(string moduleDirectory, ILogger logger)
     {
@@ -55,15 +57,35 @@ public sealed class GeoIpService : IDisposable
         return _playerIsoCode.TryGetValue(steamId, out var iso) ? iso : null;
     }
 
-    public string? GetCityForSteamId(ulong steamId)
-    {
-        return _playerCity.TryGetValue(steamId, out var city) ? city : null;
-    }
-
     public void RemovePlayer(ulong steamId)
     {
-        _playerIsoCode.Remove(steamId);
-        _playerCity.Remove(steamId);
+        _playerIsoCode.TryRemove(steamId, out _);
+        _playerCity.TryRemove(steamId, out _);
+    }
+
+    /// Достаёт IP из строки вида "1.2.3.4:27015", "1.2.3.4" или "[::1]:27015".
+    /// Наивный Split(':')[0] ломал любой IPv6-адрес.
+    public static string ExtractIp(string? rawAddress)
+    {
+        if (string.IsNullOrWhiteSpace(rawAddress)) return string.Empty;
+
+        var value = rawAddress.Trim();
+
+        // [ipv6]:port
+        if (value.StartsWith('['))
+        {
+            var close = value.IndexOf(']');
+            return close > 1 ? value.Substring(1, close - 1) : value.TrimStart('[');
+        }
+
+        var lastColon = value.LastIndexOf(':');
+        if (lastColon < 0) return value;
+
+        // Несколько двоеточий без скобок - это голый IPv6, порта там нет
+        if (value.IndexOf(':') != lastColon)
+            return value;
+
+        return value.Substring(0, lastColon);
     }
 
     public void ClearPlayers()

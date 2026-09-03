@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -14,12 +15,15 @@ namespace NotifyMessages;
 /// Отвечает за:
 /// - подстановку языковых шаблонов из Config.LanguageMessages
 /// - замену тегов {MAP}/{TIME}/{DATE}/{SERVERNAME}/{IP}/{PORT}/{MAXPLAYERS}/{PLAYERS}
-/// - замену \\n на спец-символ для отображения в центре
+/// - замену \n на спец-символ для отображения в центре
 /// - замену имён карт согласно Config.MapsName
+///
+/// ВАЖНО: вызывать только из главного потока — ReplaceMessageTags дёргает нативы
+/// (NativeAPI.GetMapName, ConVar.Find, Utilities.GetPlayers).
 public sealed class MessageProcessor
 {
     private static readonly Regex TagPattern = new Regex(@"\{([^}]*)\}", RegexOptions.Compiled);
-    
+
     private readonly Config _config;
     private readonly Func<ulong, string?> _getIsoCodeBySteamId;
 
@@ -38,6 +42,9 @@ public sealed class MessageProcessor
     /// Применяет локализацию и замену тегов
     public string ProcessMessage(string message, ulong steamId)
     {
+        if (string.IsNullOrEmpty(message))
+            return string.Empty;
+
         if (_config.LanguageMessages == null)
             return ReplaceMessageTags(message).ReplaceColorTags();
 
@@ -82,30 +89,53 @@ public sealed class MessageProcessor
             .Replace("{CITY}", city);
     }
 
-    /// Заменяет системные теги и имена карт
+    /// Заменяет системные теги и имена карт.
+    /// Каждый плейсхолдер резолвится ТОЛЬКО если реально встречается в строке —
+    /// иначе на каждое сообщение уходило по 3 ConVar.Find + GetPlayers() + GetMapName().
     public string ReplaceMessageTags(string message)
     {
-        var mapName = NativeAPI.GetMapName();
+        if (string.IsNullOrEmpty(message)) return message;
 
-        var replacedMessage = message
-            .Replace("{MAP}", mapName)
-            .Replace("{TIME}", DateTime.Now.ToString("HH:mm:ss"))
-            .Replace("{DATE}", DateTime.Now.ToString("dd.MM.yyyy"))
-            .Replace("{SERVERNAME}", ConVar.Find("hostname")?.StringValue ?? "Server")
-            .Replace("{IP}", ConVar.Find("ip")?.StringValue ?? "127.0.0.1")
-            .Replace("{PORT}", ConVar.Find("hostport")?.GetPrimitiveValue<int>().ToString() ?? "27015")
-            .Replace("{MAXPLAYERS}", Server.MaxPlayers.ToString())
-            .Replace("{PLAYERS}", CounterStrikeSharp.API.Utilities.GetPlayers().Count(u => u.PlayerPawn?.Value?.IsValid == true).ToString())
-            .Replace("\n", "\u2029");
+        var result = message;
+
+        if (result.Contains("{MAP}", StringComparison.Ordinal))
+            result = result.Replace("{MAP}", NativeAPI.GetMapName());
+
+        if (result.Contains("{TIME}", StringComparison.Ordinal))
+            result = result.Replace("{TIME}", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+
+        if (result.Contains("{DATE}", StringComparison.Ordinal))
+            result = result.Replace("{DATE}", DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture));
+
+        if (result.Contains("{SERVERNAME}", StringComparison.Ordinal))
+            result = result.Replace("{SERVERNAME}", ConVar.Find("hostname")?.StringValue ?? "Server");
+
+        if (result.Contains("{IP}", StringComparison.Ordinal))
+            result = result.Replace("{IP}", ConVar.Find("ip")?.StringValue ?? "127.0.0.1");
+
+        if (result.Contains("{PORT}", StringComparison.Ordinal))
+            result = result.Replace("{PORT}",
+                ConVar.Find("hostport")?.GetPrimitiveValue<int>().ToString(CultureInfo.InvariantCulture) ?? "27015");
+
+        if (result.Contains("{MAXPLAYERS}", StringComparison.Ordinal))
+            result = result.Replace("{MAXPLAYERS}", Server.MaxPlayers.ToString(CultureInfo.InvariantCulture));
+
+        if (result.Contains("{PLAYERS}", StringComparison.Ordinal))
+            result = result.Replace("{PLAYERS}",
+                Utilities.GetPlayers().Count(u => u.PlayerPawn?.Value?.IsValid == true).ToString(CultureInfo.InvariantCulture));
+
+        result = result.Replace("\n", "\u2029");
 
         if (_config.MapsName != null)
         {
             foreach (var (key, niceName) in _config.MapsName)
             {
-                replacedMessage = Regex.Replace(replacedMessage, $@"\b{Regex.Escape(key)}\b", niceName);
+                // Regex дорогой — не запускаем его для карт, которых нет в строке
+                if (result.Contains(key, StringComparison.Ordinal))
+                    result = Regex.Replace(result, $@"\b{Regex.Escape(key)}\b", niceName);
             }
         }
 
-        return replacedMessage;
+        return result;
     }
 }

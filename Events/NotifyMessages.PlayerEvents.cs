@@ -1,7 +1,6 @@
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Entities;
 
@@ -14,43 +13,44 @@ public partial class NotifyMessages
     private HookResult EventPlayerDisconnect(EventPlayerDisconnect ev, GameEventInfo info)
     {
         var player = ev.Userid;
+        // IsValid здесь НЕ проверяем: контроллер уже может быть частично разобран,
+        // но почистить сессию и гео-кеш всё равно обязаны
         if (player is null || player.IsBot) return HookResult.Continue;
 
-        if (Config.Debug)
-        {
-            _logger.Info($"[EVENT] Player disconnected: {player.PlayerName} (SteamID: {player.SteamID})");
-        }
+        // Значения снимаем сразу: GameEvent живёт только внутри обработчика
+        var steamId = player.SteamID;
+        var playerName = player.PlayerName;
+        var slot = player.Slot;
 
-        if (_sessionService.TryKillAndRemoveConnectionTimer(player.SteamID))
+        if (Config.Debug)
+            _logger.Info($"[EVENT] Player disconnected: {playerName} (SteamID: {steamId})");
+
+        // HTML-центр этого слота больше не нужен
+        _displayService.ClearUser(slot);
+
+        if (_sessionService.TryKillAndRemoveConnectionTimer(steamId))
         {
             if (Config.Debug)
-            {
-                _logger.Debug($"  ↳ Killed connection timer for {player.PlayerName}");
-            }
+                _logger.Debug($"  -> Killed connection timer for {playerName}");
         }
-        else if (_sessionService.IsFullyConnected(player.SteamID))
+        else if (_sessionService.IsFullyConnected(steamId) && Config.LeaveMessages != null)
         {
-            if (Config.LeaveMessages != null)
+            _geoIpService.TryGetPlayerIso(steamId, out var country);
+            _geoIpService.TryGetPlayerCity(steamId, out var city);
+
+            foreach (var p in Utilities.GetPlayers()
+                         .Where(u => u is { IsBot: false, IsValid: true } && u.SteamID != steamId))
             {
-                _geoIpService.TryGetPlayerIso(player.SteamID, out var country);
-                _geoIpService.TryGetPlayerCity(player.SteamID, out var city);
+                var message = _messageProcessor.GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID, playerName,
+                    country ?? "Unknown", city ?? "Unknown");
 
-                foreach (var p in Utilities.GetPlayers()
-                             .Where(u => u is { IsBot: false, IsValid: true } && u.SteamID != player.SteamID))
-                {
-                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID, player.PlayerName,
-                        country ?? "Unknown", city ?? "Unknown");
-
-                    if (!string.IsNullOrEmpty(message))
-                    {
-                        _displayService.Print(HudDestination.Chat, message, p, true);
-                    }
-                }
+                if (!string.IsNullOrEmpty(message))
+                    _displayService.Print(HudDestination.Chat, message, p);
             }
         }
 
-        _sessionService.RemoveFullyConnected(player.SteamID);
-        _geoIpService.RemovePlayer(player.SteamID);
+        _sessionService.RemoveFullyConnected(steamId);
+        _geoIpService.RemovePlayer(steamId);
 
         return HookResult.Continue;
     }
@@ -65,9 +65,9 @@ public partial class NotifyMessages
     {
         var player = Utilities.GetPlayerFromSlot(slot);
 
-        if (player?.IpAddress == null) return;
+        var ip = GeoIpService.ExtractIp(player?.IpAddress);
+        if (string.IsNullOrEmpty(ip)) return;
 
-        var ip = player.IpAddress.Split(':')[0];
         var defaultLang = Config.DefaultLang ?? string.Empty;
         _geoIpService.UpdatePlayerCache(id.SteamId64, ip, defaultLang);
     }
@@ -78,51 +78,51 @@ public partial class NotifyMessages
         if (player is null || !player.IsValid || player.IsBot)
             return HookResult.Continue;
 
+        // Снимаем значения ДО таймеров: через 3 секунды контроллер может быть уже невалиден,
+        // и обращение к player.SteamID из колбэка роняло плагин.
+        var steamId = player.SteamID;
+        var playerName = player.PlayerName;
+
         if (Config.Debug)
-        {
-            _logger.Info($"[EVENT] Player connected: {player.PlayerName} (SteamID: {player.SteamID})");
-        }
+            _logger.Info($"[EVENT] Player connected: {playerName} (SteamID: {steamId})");
 
-        _sessionService.AddFullyConnected(player.SteamID);
+        _sessionService.AddFullyConnected(steamId);
+        _sessionService.TryKillAndRemoveConnectionTimer(steamId);
 
-        _sessionService.TryKillAndRemoveConnectionTimer(player.SteamID);
-
-        _sessionService.SetConnectionTimer(player.SteamID, AddTimer(3.0f, () =>
+        _sessionService.SetConnectionTimer(steamId, AddTimer(JoinAnnounceDelaySeconds, () =>
         {
             if (Config.JoinMessages != null)
             {
-                if (!player.IsValid) return;
-
-                _geoIpService.TryGetPlayerIso(player.SteamID, out var country);
-                _geoIpService.TryGetPlayerCity(player.SteamID, out var city);
+                _geoIpService.TryGetPlayerIso(steamId, out var country);
+                _geoIpService.TryGetPlayerCity(steamId, out var city);
 
                 if (Config.Debug)
-                {
-                    _logger.Info($"[GeoIP] {player.PlayerName} location: {city ?? "Unknown"}, {country ?? "Unknown"}");
-                }
+                    _logger.Info($"[GeoIP] {playerName} location: {city ?? "Unknown"}, {country ?? "Unknown"}");
 
                 foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
                 {
-                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID, player.PlayerName,
-                        country ?? "Unknown", city ?? "Unknown");
+                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID,
+                        playerName, country ?? "Unknown", city ?? "Unknown");
                     if (!string.IsNullOrEmpty(message))
-                        _displayService.Print(HudDestination.Chat, message, p, true);
+                        _displayService.Print(HudDestination.Chat, message, p);
                 }
             }
 
-            _sessionService.RemoveConnectionTimer(player.SteamID);
+            _sessionService.RemoveConnectionTimer(steamId);
         }));
 
-        if (Config.WelcomeMessage == null || string.IsNullOrEmpty(Config.WelcomeMessage.Message))
+        var welcome = Config.WelcomeMessage;
+        if (welcome == null || string.IsNullOrEmpty(welcome.Message))
             return HookResult.Continue;
 
-        var welcomeMsg = Config.WelcomeMessage;
         // Используем MessageProcessor для поддержки всех тегов, включая локализацию
-        var msg = _messageProcessor.ProcessMessage(welcomeMsg.Message, player.SteamID)
-            .Replace("{PLAYERNAME}", player.PlayerName);
-        HudDestination type = Config.WelcomeMessage.MessageType == 0 ? HudDestination.Chat : HudDestination.Center;
+        var msg = _messageProcessor.ProcessMessage(welcome.Message, steamId)
+            .Replace("{PLAYERNAME}", playerName);
 
-        AddTimer(Config.WelcomeMessage.DisplayDelay, () => { _displayService.Print(type, msg, player, true); });
+        // Раньше учитывались только Chat/Center, а Console и Alert молча становились Center
+        var destination = DisplayService.ToHudDestination(welcome.MessageType);
+
+        AddTimer(welcome.DisplayDelay, () => _displayService.Print(destination, msg, player));
 
         return HookResult.Continue;
     }

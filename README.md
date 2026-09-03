@@ -1,31 +1,39 @@
 # NotifyMessages (CS2)
 
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
-[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-API-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
+**English** | [Русский](README.ru.md)
+
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
+[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-%E2%89%A5%201.0.373-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-2ea44f)](#)
-[![Release](https://img.shields.io/badge/Release-ZIP%20package-success)](#build-и-упаковка)
-[![GeoLite2](https://img.shields.io/badge/GeoLite2-Auto--download-009688)](#geolite2-данные-автозагрузка-при-сборке)
+[![Release](https://img.shields.io/badge/Release-ZIP%20package-success)](#-build-and-packaging)
+[![GeoLite2](https://img.shields.io/badge/GeoLite2-Auto--download-009688)](#-geolite2-data-build-time-download)
 
-Универсальный плагин для CounterStrikeSharp/CS2 для уведомлений и рекламы: сообщения в чат, центр экрана (в т.ч. HTML), консоль, а также анонсы других серверов через A2S-запросы.
+A general-purpose notification and advertisement plugin for CounterStrikeSharp / CS2: chat,
+center screen (including HTML), alert and console output, plus announcements of other servers
+via A2S queries.
 
-## ✨ Особенности
+## ✨ Features
 
-- 🌍 **Мультиязычность** — автоматическое определение языка по GeoIP (5+ языков)
-- 🎨 **Цветные сообщения** — поддержка 15+ цветовых тегов
-- 📱 **Множество каналов вывода** — чат, центр экрана, HTML-центр, консоль
-- 🔄 **Модульная конфигурация** — 4 отдельных конфига для удобства
-- 🖥️ **Мониторинг серверов** — A2S-запросы с асинхронным кешированием
-- ⚡ **Высокая производительность** — кеширование сообщений, оптимизированные регулярные выражения
-- 🔒 **Thread-safe** — безопасная работа в многопоточной среде
-- 🚀 **Фоновые операции** — все запросы к серверам выполняются асинхронно, без блокировки UI
+- 🌍 **Multi-language** — automatic language detection via GeoIP (5+ languages)
+- 🎨 **Colored messages** — 20+ color tags mapped straight to CounterStrikeSharp `ChatColors`
+- 📱 **Multiple output channels** — chat, center, HTML center, alert, console
+- 🔄 **Modular configuration** — four separate config files
+- 🖥️ **Server monitoring** — A2S queries with background caching
+- 🔌 **Restart notifications** — a command for your external updater, with colors and translations
+- ⚡ **Performance-minded** — per-language message caching, lazy placeholder resolution
+- 🔒 **Thread-safe** — network polling never touches the game's main thread
 
-## 📦 Установка
+## 📦 Installation
 
-1. Установите [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) и Metamod:Source
-2. Скачайте собранный архив `NotifyMessages.zip` из релизов или соберите проект сами
-3. Распакуйте содержимое архива в корень игрового сервера
+> **Requires CounterStrikeSharp v1.0.373 or newer.** Since v1.0.369 CounterStrikeSharp runs on
+> .NET 10, and this plugin targets `net10.0` — it will not load on older CounterStrikeSharp builds.
 
-В архиве уже готова структура:
+1. Install [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) (>= v1.0.373) and Metamod:Source
+2. Download `NotifyMessages.zip` from the releases page, or build it yourself
+3. Extract the archive into the root of your game server
+
+The archive already has the right layout:
+
 ```
 addons/counterstrikesharp/plugins/NotifyMessages/
 ├── NotifyMessages.dll
@@ -37,106 +45,103 @@ addons/counterstrikesharp/plugins/NotifyMessages/
 └── GeoLite2-City.mmdb
 ```
 
-4. Запустите сервер — плагин автоматически создаст конфигурационные файлы
+4. Start the server — the plugin creates its configuration files automatically
 
-## ⚙️ Конфигурация
+## ⚙️ Configuration
 
-Плагин использует **модульную систему конфигурации** — 4 отдельных JSON-файла в папке:
+The plugin uses a **modular configuration** — four separate JSON files in:
+
 ```
 csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
-├── Settings.json    # Основные настройки плагина
-├── Messages.json    # Все переводы и текстовые сообщения
-├── Ads.json         # Рекламные объявления
-├── Servers.json     # Список серверов для мониторинга
-└── README.txt       # Подробная документация по конфигам
+├── Settings.json    # Core plugin settings
+├── Messages.json    # All translations and message texts
+├── Ads.json         # Advertisements
+├── Servers.json     # Servers to monitor
+└── README.txt       # Detailed config documentation
 ```
 
-**При первом запуске** плагин автоматически создаёт все 4 файла с детальными примерами + `README.txt` с полной документацией!
+**On first run** the plugin creates all four files with detailed examples, plus a `README.txt`
+with full documentation.
 
-После редактирования используйте команду `css_reload_advert` для применения изменений без перезапуска сервера.
+After editing, run `css_reload_advert` to apply changes without restarting the server.
 
 ---
 
-### 📄 Settings.json — Основные настройки
+### 📄 Settings.json — core settings
 
-**Назначение:** Базовые параметры плагина, приветственные сообщения, ссылки на ключи переводов.
+**Purpose:** base plugin parameters, welcome message, references to translation keys.
 
-#### Структура:
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `Debug` | bool | Verbose logging. **Off by default** — it logs SteamIDs, names and geo data |
+| `DefaultLang` | string | Fallback language (RU/US/UA/PL/DE) |
+| `PrintToCenterHtml` | bool? | Use HTML for center messages |
+| `ShowHtmlWhenDead` | bool? | Show HTML to dead players |
+| `HtmlCenterDuration` | float? | HTML display duration in seconds (default 5) |
+| `WelcomeMessage` | object | Message shown on connect |
+| `RestartMessage` | string | Restart announcement template |
+| `UpdateMessage` | string | Update announcement template |
+| `ChangeTeamMessage` | string | Team change template |
+| `JoinTeamMessage` | string | Team join template |
+| `TitleAnnounceServers` | string | Header for the `css_servers` command |
+| `RestartNotify` | object | Restart/update notification (see below) |
+| `MapsName` | object | Pretty map names (technical name → display name) |
 
-```json
-{
-  "Debug": true,
-  "DefaultLang": "RU",
-  "PrintToCenterHtml": false,
-  "ShowHtmlWhenDead": null,
-  "HtmlCenterDuration": null,
-  
-  "WelcomeMessage": {
-    "MessageType": 0,
-    "Message": "{prefix}{welcome_player} {RED}{PLAYERNAME} {DEFAULT}{welcome_text}",
-    "DisplayDelay": 5
-  },
-  
-  "RestartMessage": "{prefix}{RED}{will_restarted}",
-  "UpdateMessage": "{prefix}{RED}{will_updated}",
-  "ChangeTeamMessage": "{prefix}{changeTeamMessage}",
-  "JoinTeamMessage": "{prefix}{joinTeamMessage}",
-  "TitleAnnounceServers": "{prefix}{announce_servers}",
-  
-  "MapsName": {
-    "de_dust2": "Dust 2",
-    "de_mirage": "Mirage",
-      "PL": "na serwer gry {RED}Armaturix",
-      "DE": "auf den Spieleserver {RED}Armaturix"
-    },
-    "de_inferno": "Inferno",
-    "de_nuke": "Nuke",
-    "de_overpass": "Overpass"
-  }
-}
-```
-
-#### Параметры:
-
-| Параметр | Тип | Описание |
-|----------|-----|----------|
-| `Debug` | bool | Включить подробное логирование (true/false) |
-| `DefaultLang` | string | Язык по умолчанию (RU/US/UA/PL/DE) |
-| `PrintToCenterHtml` | bool? | Использовать HTML для центральных сообщений |
-| `ShowHtmlWhenDead` | bool? | Показывать HTML мёртвым игрокам |
-| `HtmlCenterDuration` | float? | Длительность показа HTML в секундах |
-| `WelcomeMessage` | object | Приветственное сообщение при подключении |
-| `RestartMessage` | string | Шаблон сообщения о рестарте (использует ключи из Messages.json) |
-| `UpdateMessage` | string | Шаблон сообщения об обновлении |
-| `ChangeTeamMessage` | string | Шаблон при смене команды |
-| `JoinTeamMessage` | string | Шаблон при входе в команду |
-| `TitleAnnounceServers` | string | Заголовок для команды !servers |
-| `MapsName` | object | Красивые названия карт (технич. название → отображаемое) |
-
-**💡 Важно:** В сообщениях используются ключи типа `{prefix}`, `{welcome_player}` и т.д. — все переводы находятся в **Messages.json**!
+**💡 Important:** message templates use keys like `{prefix}` and `{welcome_player}` — all
+translations live in **Messages.json**.
 
 #### WelcomeMessage:
 
 ```json
 {
-  "MessageType": 0,      // 0=Chat, 1=Center, 2=CenterHtml, 3=Console
-  "Message": "...",      // Шаблон с ключами из Messages.json
-  "DisplayDelay": 5      // Задержка показа в секундах
+  "MessageType": 0,      // 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert
+  "Message": "...",      // Template with keys from Messages.json
+  "DisplayDelay": 5      // Delay before showing, in seconds
 }
 ```
 
+#### RestartNotify — restart notification:
+
+The integration point for an external updater (see [Updater integration](#-updater-integration)).
+
+```json
+"RestartNotify": {
+  "Enabled": true,
+  "MessageType": 0,
+  "DefaultMessage": "{prefix}{RED}{restart_in_seconds}",
+  "Thresholds": {
+    "300": "{prefix}{RED}{update_available} {DEFAULT}{restart_in_5min}",
+    "60":  "{prefix}{RED}{update_available} {DEFAULT}{restart_in_1min}",
+    "30":  "{prefix}{RED}{restart_in_30sec}",
+    "10":  "{prefix}{RED}{restart_in_10sec}",
+    "1":   "{prefix}{RED}{restart_now}"
+  }
+}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `Enabled` | bool | Enable handling of `css_restart_notify` |
+| `MessageType` | int | Output channel: 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert |
+| `DefaultMessage` | string | Template for values not listed in `Thresholds` |
+| `Thresholds` | object | Exact marks: `"seconds"` → template |
+
+Extra placeholders: `{SECONDS}` — the number of seconds, `{TIME_RESTART}` — time as `mm:ss`.
+Colors and translations work as everywhere else: texts come from `Messages.json`, colors from tags.
+
+**Template selection:** exact match on the number of seconds first, otherwise `DefaultMessage`.
+The "nearest" threshold is deliberately not used — saying "in 5 seconds" when 4 remain would be a lie.
+
 ---
 
-### 🌍 Messages.json — Переводы и сообщения
+### 🌍 Messages.json — translations
 
-**Назначение:** Централизованное хранилище всех текстов и переводов на разные языки.
-
-#### Структура:
+**Purpose:** a single place for every translatable text.
 
 ```json
 {
   "LanguageMessages": {
-    "ключ": {
+    "key": {
       "RU": "Русский текст",
       "US": "English text",
       "UA": "Український текст",
@@ -149,106 +154,40 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 }
 ```
 
-#### LanguageMessages — Переводы:
+`LanguageMessages` holds every translatable string: `prefix`, `welcome_player`, `welcome_text`,
+`reklama_1`…, `will_restarted`, `will_updated`, `changeTeamMessage`, `joinTeamMessage`,
+`player`, `connected`, `disconnected`, `announce_servers`, and the `restart_*` keys used by
+`RestartNotify`. See the generated file after first run for the full list.
 
-Здесь находятся ВСЕ переводимые тексты плагина. Примеры ключей:
-
-- `prefix` — префикс для всех сообщений
-- `welcome_player` — приветствие игрока
-- `welcome_text` — текст приветствия
-- `reklama_1`, `reklama_2`, ... — тексты рекламы
-- `will_restarted`, `will_updated` — системные сообщения
-- `changeTeamMessage`, `joinTeamMessage` — сообщения о командах
-- `player`, `connected`, `disconnected` — статусы игроков
-- `announce_servers` — заголовок списка серверов
-
-Полный список смотрите в автоматически созданном файле после первого запуска!
-
-#### JoinMessages / LeaveMessages:
-
-Массивы сообщений для показа при подключении/отключении игроков:
-
-```json
-{
-  "JoinMessages": {
-    "RU": [
-      "{player} {connected} Страна: {country}, Город: {city}",
-      "{connected} Игрок {PLAYERNAME} из {COUNTRY}!"
-    ],
-    "US": [
-      "{player} {connected} Country: {country}, City: {city}"
-    ]
-  }
-}
-```
-
-Плагин случайно выбирает одно из сообщений для языка игрока.
-
-**Доступные плейсхолдеры:**
-- `{PLAYERNAME}` — имя игрока
-- `{COUNTRY}` — страна (через GeoIP)
-- `{CITY}` — город (через GeoIP)
-- `{player}`, `{connected}`, `{disconnected}` — ключи переводов из LanguageMessages
+`JoinMessages` / `LeaveMessages` are arrays of messages shown when a player connects or
+disconnects, with `{PLAYERNAME}`, `{COUNTRY}` and `{CITY}` available.
 
 ---
 
-### 📢 Ads.json — Реклама
+### 📢 Ads.json — advertisements
 
-**Назначение:** Циклические рекламные объявления с настраиваемыми интервалами.
-
-#### Пример:
+Each block has its own interval and its own list of messages, rotated in order:
 
 ```json
 {
   "Ads": [
     {
-      "Interval": 120,
-      "Messages": [
-        { "Chat": "{prefix}{reklama_1}" },
-        { "Center": "!ws • !knife • !gloves • !skins" }
-      ]
-    },
-    {
       "Interval": 180,
       "Messages": [
-        { "Chat": "{prefix}{reklama_2}" },
-        { "Center": "!viptest - FREE!" }
-      ]
-    },
-    {
-      "Interval": 240,
-      "Messages": [
-        { "Chat": "{prefix}{reklama_3}" }
+        { "Chat": "{prefix}{reklama_1}" },
+        { "Chat": "{prefix}{reklama_2}", "Console": "{reklama_2}" }
       ]
     }
   ]
 }
 ```
 
-#### Структура рекламного блока:
-
-| Параметр | Описание |
-|----------|----------|
-| `Interval` | Интервал показа в секундах (минимум 1) |
-| `Messages` | Массив сообщений (показываются циклически) |
-
-#### Каналы вывода:
-
-- `"Chat"` — в чат
-- `"Center"` — в центр экрана
-- `"Console"` — в консоль игрока
-
-Можно комбинировать несколько каналов в одном сообщении!
-
-**💡 Совет:** Ключи типа `{reklama_1}`, `{reklama_2}` берутся из **Messages.json** → `LanguageMessages`
+Output channel keys: `Chat`, `Center`, `Console`. An unknown key is skipped with a debug line;
+a block with an empty `Messages` array is skipped at startup instead of crashing its timer.
 
 ---
 
-### 🖥️ Servers.json — Мониторинг серверов
-
-**Назначение:** Отображение статуса других серверов через A2S-протокол.
-
-#### Пример:
+### 🖥️ Servers.json — server monitoring
 
 ```json
 {
@@ -256,304 +195,254 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
   "Interval": 60,
   "QueryTimeoutMs": 500,
   "CacheTtlSeconds": 30,
-  
   "List": [
     {
-      "Ip": "123.45.67.89",
+      "Ip": "127.0.0.1",
       "Port": 27015,
       "MessageTemplate": "{LIGHTBLUE}[SERVER 1]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}",
-      "MessageTemplateConsole": "Server 1: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
-      "MaxPlayersFallback": 32
-    },
-    {
-      "Ip": "123.45.67.90",
-      "Port": 27015,
-      "MessageTemplate": "{LIGHTBLUE}[SERVER 2]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}",
-      "MessageTemplateConsole": "Server 2: {SERVER_IP}:{SERVER_PORT} - {SERVER_MAP} | {SERVER_PLAYERS}/{SERVER_MAXPLAYERS}",
+      "MessageTemplateConsole": "",
       "MaxPlayersFallback": 32
     }
   ]
 }
 ```
 
-#### Основные параметры:
+| Parameter | Description |
+|-----------|-------------|
+| `Enabled` | Enable monitoring |
+| `Interval` | Polling interval in seconds (minimum 5) |
+| `QueryTimeoutMs` | A2S timeout, 1–5000 ms |
+| `CacheTtlSeconds` | Cache lifetime, 0–60 s |
+| `MaxPlayersFallback` | Slot count shown when the server is offline |
 
-| Параметр | Тип | Описание |
-|----------|-----|----------|
-| `Enabled` | bool | Включить/выключить мониторинг (по умолчанию `false`) |
-| `Interval` | float | Интервал автоматического опроса в секундах (минимум 5, рекомендуется 60+) |
-| `QueryTimeoutMs` | int | Таймаут A2S-запроса в миллисекундах (200-5000, рекомендуется 500) |
-| `CacheTtlSeconds` | int | Время жизни кеша в секундах (0-60, рекомендуется 30) |
-| `List` | array | Массив серверов для мониторинга |
+Placeholders for the templates: `{SERVER_IP}`, `{SERVER_PORT}`, `{SERVER_MAP}` (or `OFFLINE`),
+`{SERVER_PLAYERS}`, `{SERVER_MAXPLAYERS}`.
 
-#### Параметры сервера:
+#### How it works:
 
-| Параметр | Описание |
-|----------|----------|
-| `Ip` | IP-адрес или hostname сервера |
-| `Port` | Порт сервера |
-| `MessageTemplate` | Шаблон для чата (с цветовыми тегами) |
-| `MessageTemplateConsole` | Шаблон для консоли (без цветов) |
-| `MaxPlayersFallback` | Макс. игроков если сервер оффлайн |
-
-#### Плейсхолдеры для MessageTemplate:
-
-| Плейсхолдер | Описание |
-|-------------|----------|
-| `{SERVER_IP}` | IP-адрес сервера |
-| `{SERVER_PORT}` | Порт сервера |
-| `{SERVER_MAP}` | Текущая карта (или "OFFLINE" если недоступен) |
-| `{SERVER_PLAYERS}` | Количество игроков онлайн |
-| `{SERVER_MAXPLAYERS}` | Максимум игроков (или MaxPlayersFallback) |
-
-#### Особенности работы:
-
-- ✅ **Синхронные запросы в главном потоке** — полная стабильность, без thread-ошибок
-- ✅ **Умное кеширование** — TTL-кеш снижает нагрузку на серверы
-- ✅ **Фоновое обновление** — после команды `!servers` кеш обновляется для следующего запроса
-- ✅ **Последовательная обработка** — серверы опрашиваются с интервалом 50-100ms
-- ⚠️ **Компромисс:** Возможна небольшая задержка сервера при опросе (до 500ms на сервер)
+- ✅ **Polling runs on a background thread** — the game's main thread is never blocked
+- ✅ **Smart caching** — a TTL cache limits how often servers are re-queried
+- ✅ **Background refresh** — after `css_servers` the cache is refreshed for the next request
+- ✅ **No overlapping runs** — at most one polling pass at a time
+- ✅ **Command cooldown** — `css_servers` is available to a player once every 10 seconds
+- ✅ **Untrusted input** — replies are only accepted from the address that was queried,
+  parsing is bounds-checked, and strings are decoded as UTF-8
 
 ---
 
-## 🎨 Цветовые теги
+## 🎨 Color tags
 
-Плагин поддерживает следующие цветовые теги (автоматически конвертируются в коды CS2):
+Codes come straight from CounterStrikeSharp's `ChatColors` — what the game actually renders.
 
-| Тег | Цвет | Тег | Цвет |
-|-----|------|-----|------|
-| `{DEFAULT}` / `{WHITE}` | Белый | `{RED}` | Красный |
-| `{GREEN}` / `{LIME}` | Зелёный | `{BLUE}` | Синий |
-| `{YELLOW}` / `{GOLD}` | Жёлтый | `{ORANGE}` | Оранжевый |
-| `{LIGHTBLUE}` | Голубой | `{DARKBLUE}` | Тёмно-синий |
-| `{PURPLE}` / `{LIGHTPURPLE}` | Фиолетовый | `{MAGENTA}` | Пурпурный |
-| `{GREY}` / `{GRAY}` | Серый | `{SILVER}` | Серебряный |
-| `{DARKRED}` | Тёмно-красный | `{OLIVE}` | Оливковый |
-| `{LIGHTYELLOW}` | Светло-жёлтый | `{BLUEGREY}` | Сине-серый |
+| Tag | Color | Tag | Color |
+|-----|-------|-----|-------|
+| `{DEFAULT}` / `{WHITE}` | White | `{RED}` | Red |
+| `{DARKRED}` | Dark red | `{LIGHTRED}` | Light red |
+| `{GREEN}` | Green | `{LIME}` | Lime |
+| `{OLIVE}` | Olive | `{YELLOW}` / `{LIGHTYELLOW}` | Yellow |
+| `{GOLD}` / `{ORANGE}` | Gold / orange | `{BLUE}` / `{LIGHTBLUE}` | Blue |
+| `{DARKBLUE}` | Dark blue | `{PURPLE}` / `{MAGENTA}` | Purple |
+| `{LIGHTPURPLE}` | Pink | `{GREY}` / `{GRAY}` | Grey |
+| `{SILVER}` / `{BLUEGREY}` | Silver | | |
 
-**Дополнительные теги:**
-- `{SPACE}` — широкий пробел для выравнивания
-- `\n` — перенос строки (автоматически конвертируется в `\u2029`)
+**Extra tags:** `{SPACE}` — wide space for alignment, `\n` — line break.
 
----
-
-## 📝 Системные плейсхолдеры
-
-Доступны во всех сообщениях:
-
-| Плейсхолдер | Описание | Пример |
-|-------------|----------|--------|
-| `{MAP}` | Название карты | de_dust2 или DUST 2 (если в MapsName) |
-| `{TIME}` | Текущее время | 15:30:45 |
-| `{DATE}` | Текущая дата | 26.11.2024 |
-| `{SERVERNAME}` | Имя сервера | Мой CS2 Сервер |
-| `{IP}` | IP сервера | 192.168.1.100 |
-| `{PORT}` | Порт сервера | 27015 |
-| `{MAXPLAYERS}` | Макс. слотов | 32 |
-| `{PLAYERS}` | Игроков онлайн | 18 |
-| `{TIME_RESTART}` | Время до рестарта | 05:00 (в командах) |
+> ⚠️ **Before 2.1.0 the table was custom-made and did not match CS2**: `{BLUE}` rendered as
+> magenta, `{YELLOW}` as blue, `{LIGHTBLUE}` as green, `{GREY}` as silver, and so on.
+> Tags now produce the color they claim. If your config was tuned by eye against the old
+> behaviour, review its colors.
 
 ---
 
-## 🎮 Команды
+## 📝 System placeholders
 
-### Для игроков:
+Available in every message:
 
-| Команда | Описание |
-|---------|----------|
-| `css_servers` | Показать список серверов из кеша |
+| Placeholder | Description | Example |
+|-------------|-------------|---------|
+| `{MAP}` | Current map | de_dust2 or Dust 2 (if listed in `MapsName`) |
+| `{TIME}` | Current time | 15:30:45 |
+| `{DATE}` | Current date | 26.11.2024 |
+| `{SERVERNAME}` | Server hostname | My CS2 Server |
+| `{IP}` | Server IP | 192.168.1.100 |
+| `{PORT}` | Server port | 27015 |
+| `{MAXPLAYERS}` | Max slots | 32 |
+| `{PLAYERS}` | Players online | 18 |
+| `{TIME_RESTART}` | Time until restart | 05:00 (in commands) |
+| `{SECONDS}` | Seconds until restart | 42 (in `css_restart_notify`) |
 
-**Особенность:** После показа списка запускается фоновое обновление кеша, чтобы следующий запрос показал актуальные данные.
+---
 
-### Для администраторов:
+## 🎮 Commands
 
-| Команда | Права | Описание |
-|---------|-------|----------|
-| `css_announce_restart <сек>` | SERVER_ONLY | Объявить рестарт через N секунд (1-3600) |
-| `css_announce_update <сек>` | SERVER_ONLY | Объявить обновление через N секунд (1-3600) |
-| `css_reload_advert` | @css/root | Перезагрузить все 4 конфигурации без перезапуска |
+### For players:
 
-**Важно:** Команды `css_announce_restart` и `css_announce_update` имеют ограничение **от 1 до 3600 секунд** (1 час) для безопасности.
+| Command | Description |
+|---------|-------------|
+| `css_servers` | Show the cached server list (10 s cooldown per player) |
 
-#### Примеры:
+After the list is shown, a background cache refresh is started so the next request has fresh data.
+
+### For administrators:
+
+| Command | Permission | Description |
+|---------|------------|-------------|
+| `css_announce_restart <sec>` | SERVER_ONLY | Announce a restart in N seconds (1–3600) |
+| `css_announce_update <sec>` | SERVER_ONLY | Announce an update in N seconds (1–3600) |
+| `css_restart_notify <sec>` | SERVER_ONLY | Send the `RestartNotify` message for that mark (0–86400) |
+| `css_reload_advert` | @css/root | Reload all four config files without a restart |
+
+#### Examples:
 
 ```
-css_announce_restart 300     // Рестарт через 5 минут
-css_announce_update 60       // Обновление через 1 минуту
-css_reload_advert            // Перезагрузить все конфиги
+css_announce_restart 300     // Restart in 5 minutes
+css_announce_update 60       // Update in 1 minute
+css_restart_notify 300       // RestartNotify message for the 300 s mark
+css_reload_advert            // Reload every config file
 ```
 
 ---
 
-## ⚡ Оптимизации и производительность
+## 🔌 Updater integration
 
-### Реализованные улучшения:
+An external update service (for example [CS2-Basefiles-Egg](https://github.com/Armatura/CS2-Basefiles-Egg))
+usually notifies players with a plain `say <text>` — no colors, no translations, one language for
+everyone.
 
-1. **Кеширование сообщений по языку**
-   - Сообщения обрабатываются один раз для каждого языка
-   - Если у всех игроков RU язык, обработка происходит только один раз
-   - Значительное сокращение CPU нагрузки при большом количестве игроков
+Replace `say` in the updater's config with `css_restart_notify <seconds>`, and the texts will be
+pulled from `Messages.json` in each player's own language, colored per `Settings.json`.
 
-2. **Скомпилированные регулярные выражения**
-   - Regex для парсинга тегов компилируется один раз при загрузке
-   - Значительное ускорение обработки сообщений
+Example for `service/configs/message.json`:
 
-3. **Умные A2S-запросы серверов**
-   - Запросы выполняются в главном потоке для стабильности
-   - Последовательная обработка с интервалами 50-100ms
-   - TTL-кеширование снижает частоту запросов
-   - Уменьшенный таймаут (500ms) для минимизации задержек
+```json
+{
+  "restart_countdown": {
+    "300": "css_restart_notify 300",
+    "60":  "css_restart_notify 60",
+    "30":  "css_restart_notify 30",
+    "10":  "css_restart_notify 10",
+    "1":   "css_restart_notify 1"
+  }
+}
+```
 
-4. **Thread-safe операции**
-   - Все критические секции защищены `lock`
-   - SessionService безопасен для многопоточного доступа
-   - ServerStatusService использует потокобезопасный кеш
-   - Полная защита от race conditions
-
-5. **Улучшенное логирование**
-   - Временные метки для всех сообщений (HH:mm:ss)
-   - Полные Stack Trace для ошибок в Debug режиме
-   - Структурированный формат: `[timestamp] [plugin] [level] message`
-   - Опциональный вывод обработанных сообщений в консоль
-
-6. **Модульная конфигурация**
-   - 4 отдельных файла для разных функций
-   - Быстрая загрузка при старте
-   - Простая поддержка и редактирование
+The updater's marks and the plugin's `RestartNotify.Thresholds` do not have to match: for an
+unknown mark the plugin falls back to `DefaultMessage` with `{SECONDS}` substituted.
 
 ---
 
-## 🔧 Build и упаковка
+## ⚡ Performance notes
 
-### Сборка релиза:
+0. **No work when there is nothing to do**
+   - `OnTick` returns immediately while no HTML message is active
+   - System placeholders (`{SERVERNAME}`, `{PLAYERS}`, `{MAP}`…) are only resolved when actually present
+   - Color tag ordering is computed once at load, not per message
+
+1. **Per-language message caching** — a broadcast is processed once per language, not per player
+
+2. **Compiled regular expressions** — tag patterns are compiled once
+
+3. **Background A2S polling** — queries never block the main thread, and never call a CS2 native
+   from the background thread: only UDP, strings, and a dictionary under a lock
+
+4. **Thread-safe state** — session timers and the server cache are guarded by locks
+
+5. **Locale-independent formatting** — numbers and dates use the invariant culture, so a server
+   running under an unusual locale renders the same text
+
+---
+
+## 🔧 Build and packaging
+
+Requires the **.NET 10 SDK**.
 
 ```bash
 dotnet build -c Release
 ```
 
-Готовый архив: `bin/Release/net8.0/NotifyMessages.zip`
+Resulting archive: `bin/Release/net10.0/NotifyMessages.zip`, already laid out as
+`addons/counterstrikesharp/plugins/NotifyMessages/` — extract it into the server root.
 
-Внутри архива уже правильная структура `addons/counterstrikesharp/plugins/NotifyMessages/` с файлами плагина и зависимостями. Архив можно просто распаковать в корень сервера.
-
----
-
-## 🌍 GeoLite2 данные (автозагрузка при сборке)
-
-Чтобы в релиз попадали актуальные базы `GeoLite2-Country.mmdb` и `GeoLite2-City.mmdb`:
-
-### Способ 1: Переменная окружения (рекомендовано для CI)
-
-**macOS/Linux:**
-```bash
-export MAXMIND_LICENSE_KEY=ВАШ_КЛЮЧ
-dotnet build -c Release
-```
-
-**Windows (PowerShell):**
-```powershell
-setx MAXMIND_LICENSE_KEY "ВАШ_КЛЮЧ"
-# Перезапустите терминал/IDE
-dotnet build -c Release
-```
-
-### Способ 2: Свойство MSBuild
+### Tests:
 
 ```bash
-dotnet build -c Release -p:GeoLiteLicenseKey=ВАШ_КЛЮЧ
+dotnet test
 ```
 
-### Способ 3: Локальный props-файл
+Coverage focuses on the parts that actually broke: parsing of untrusted A2S packets (truncated
+and garbage input), color tags, IP extraction (IPv6 included), advertisement rotation, and
+`css_restart_notify` template selection.
 
-Скопируйте `Directory.Build.props.example` в `Directory.Build.props` и укажите ключ. Файл исключён из git.
+### CI and releases:
 
-### Фолбэк
+- `.github/workflows/ci.yml` — build and test on every push to `main` and every PR
+- `.github/workflows/release.yml` — on a `v*` tag: build → **test** → package → GitHub Release
+  with `NotifyMessages.zip` attached
 
-Если ключ не задан или загрузка не удалась, сборка использует локальные файлы:
-- Положите `GeoLite2-Country.mmdb` и `GeoLite2-City.mmdb` в папку `GeoIP/` в корне репозитория
-- Они будут автоматически скопированы в выходную папку и включены в релизный ZIP
+```bash
+git tag v2.1.0 && git push origin v2.1.0
+```
 
-**Получить ключ:** Зарегистрируйтесь на [maxmind.com](https://www.maxmind.com/en/geolite2/signup)
-
----
-
-## 📚 Примечания
-
-### Локализация
-
-- Плагин автоматически определяет страну игрока по IP через GeoIP2
-- Поддерживаются языки: RU, US, UA, PL, DE
-- Можно легко добавить новые языки в `LanguageMessages`
-- Если язык игрока не найден, используется `DefaultLang`
-
-### Особенности работы
-
-- Приветственные сообщения поддерживают все плейсхолдеры и локализацию
-- Сообщения о смене команды локализуются для каждого игрока отдельно
-- HTML-центр работает только для живых игроков (если `ShowHtmlWhenDead: false`)
-- Анонсы серверов по умолчанию отключены (`Enabled: false`)
-
-### Совместимость
-
-- Минимальная версия CounterStrikeSharp API: 339
-- .NET 8.0
-- Windows и Linux
-
-### Безопасность
-
-- Все входные данные команд валидируются
-- Ограничения на время рестарта/обновления (1-3600 сек)
-- Thread-safe операции во всех критических секциях
-- Защита от переполнения при A2S-запросах
+A release is not published if the tests fail. The `MAXMIND_LICENSE_KEY` repository secret is
+optional — without it the archive ships the GeoLite2 databases committed under `GeoIP/`.
 
 ---
 
-## 🐛 Исправленные баги (v2.0.0)
+## 🌍 GeoLite2 data (build-time download)
 
-- ✅ Исправлен расчёт времени HTML-центра (`.Seconds` → `.TotalSeconds`)
-- ✅ Удалено дублирование `InitialQuery()` в команде reload
-- ✅ Добавлена потокобезопасность в `SessionService`
-- ✅ Добавлены ограничения на команды announce (1-3600 сек)
-- ✅ Оптимизированы регулярные выражения (скомпилированные)
-- ✅ Реализовано кеширование обработанных сообщений
-- ✅ Улучшена система логирования (временные метки, stack trace)
-- ✅ A2S-запросы теперь полностью асинхронны (не блокируют UI)
+To ship fresh `GeoLite2-Country.mmdb` and `GeoLite2-City.mmdb` in a release:
 
----
+**Option 1 — environment variable (recommended for CI):**
 
-## 📖 Changelog
+```bash
+export MAXMIND_LICENSE_KEY=YOUR_KEY
+```
 
-### v2.0.0 (2024-11-26)
+**Option 2 — MSBuild property:**
 
-#### 🚀 Новое
-- Кеширование обработанных сообщений по языку
-- Асинхронные фоновые A2S-запросы
-- Фоновое обновление кеша серверов после команды `css_servers`
-- Улучшенное логирование с временными метками
+```bash
+dotnet build -c Release -p:GeoLiteLicenseKey=YOUR_KEY
+```
 
-#### ⚡ Оптимизации
-- Скомпилированные регулярные выражения
-- Thread-safe операции во всех сервисах
-- Валидация команд (лимиты 1-3600 секунд)
+**Option 3 — local props file:** copy `Directory.Build.props.example` to `Directory.Build.props`
+and put your key there. That file is gitignored — **never commit a real key**.
 
-#### 🐛 Исправления
-- Корректный расчёт времени HTML-центра
-- Удалено дублирование InitialQuery()
-- Исправлена локализация в WelcomeMessage
-- Исправлена локализация сообщений о смене команды
+**Fallback:** if the download is skipped or fails, the databases committed under `GeoIP/` are used.
 
 ---
 
-**Автор:** Armatura  
-**Версия:** v2.0.0  
-**Лицензия:** MIT  
-**GitHub:** [ваша-ссылка-здесь]
+## 📚 Notes
+
+### Localization
+
+A player's language is detected from their IP via MaxMind GeoLite2 and cached per SteamID.
+If the database is missing or the lookup fails, `DefaultLang` is used. Local and private
+addresses always fall back to `DefaultLang`.
+
+### Compatibility
+
+- CounterStrikeSharp **>= 1.0.373** (`MinimumApiVersion` 373), .NET 10
+- Linux and Windows
+
+### Security
+
+- `css_servers` is available to any player, so it is rate-limited per player and never blocks
+  the main thread
+- A2S replies are only accepted from the queried address, and every read is bounds-checked
+- `Debug` logging is off by default because it writes SteamIDs, names and geo data to the log
 
 ---
 
-## 💬 Поддержка
+## 🐛 Changelog
 
-Если у вас возникли вопросы или проблемы:
-1. Проверьте логи сервера (включите `Debug: true`)
-2. Убедитесь, что файлы GeoIP на месте
-3. Проверьте права на команды (@css/root для reload)
-4. Создайте Issue на GitHub с подробным описанием
+See [Русская версия](README.ru.md#-исправленные-баги-v210) for the detailed 2.1.0 changelog.
+
+**2.1.0 highlights:** correct CS2 color codes, UTF-8 server names, non-blocking A2S polling,
+`css_restart_notify` for updater integration, `Alert` output channel, .NET 10 / CounterStrikeSharp
+1.0.373, test suite and release automation.
+
+---
+
+## 💬 Support
+
+Issues and pull requests are welcome.

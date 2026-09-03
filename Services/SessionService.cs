@@ -10,14 +10,6 @@ public sealed class SessionService
     private readonly Dictionary<ulong, Timer> _connectionTimers = new();
     private readonly HashSet<ulong> _fullyConnectedPlayers = new();
 
-    public bool TryGetConnectionTimer(ulong steamId, out Timer timer)
-    {
-        lock (_lock)
-        {
-            return _connectionTimers.TryGetValue(steamId, out timer!);
-        }
-    }
-
     public void SetConnectionTimer(ulong steamId, Timer timer)
     {
         lock (_lock)

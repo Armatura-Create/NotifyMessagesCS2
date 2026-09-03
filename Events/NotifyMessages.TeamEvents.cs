@@ -20,7 +20,7 @@ public partial class NotifyMessages
         {
             var oldTeamName = GetTeamName(oldTeam);
             var newTeamName = GetTeamName(newTeam);
-            _logger.Info($"[EVENT] {player.PlayerName} team change: {oldTeamName} → {newTeamName}");
+            _logger.Info($"[EVENT] {player.PlayerName} team change: {oldTeamName} -> {newTeamName}");
         }
 
         if (oldTeam == 0 && (newTeam == 1 || newTeam == 2 || newTeam == 3))
@@ -37,7 +37,7 @@ public partial class NotifyMessages
         return HookResult.Continue;
     }
 
-    private string GetTeamName(int team)
+    private static string GetTeamName(int team)
     {
         return team switch
         {
@@ -77,7 +77,7 @@ public partial class NotifyMessages
                 .Replace("{TEAM}", teamName)
                 .Replace("{OLD_TEAM}", oldTeamName);
 
-            _displayService.Print(HudDestination.Chat, msg, p, true);
+            _displayService.Print(HudDestination.Chat, msg, p);
         }
     }
 
@@ -101,7 +101,7 @@ public partial class NotifyMessages
                 .Replace("{PLAYERNAME}", playerName)
                 .Replace("{TEAM}", teamName);
 
-            _displayService.Print(HudDestination.Chat, msg, p, true);
+            _displayService.Print(HudDestination.Chat, msg, p);
         }
     }
 

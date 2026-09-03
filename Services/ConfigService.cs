@@ -11,6 +11,20 @@ namespace NotifyMessages;
 /// Сервис работы с конфигурацией плагина: загрузка/сохранение и создание дефолтных файлов
 public sealed class ConfigService
 {
+    // JsonSerializerOptions дорогие в создании и потокобезопасны — держим по одному экземпляру
+    private static readonly JsonSerializerOptions ReadOptions = new()
+    {
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true
+    };
+
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     private readonly ILogger _logger;
 
     public ConfigService(ILogger logger)
@@ -72,8 +86,7 @@ public sealed class ConfigService
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<SettingsConfig>(json,
-                new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
+            return JsonSerializer.Deserialize<SettingsConfig>(json, ReadOptions);
         }
         catch (Exception ex)
         {
@@ -93,8 +106,7 @@ public sealed class ConfigService
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<MessagesConfig>(json,
-                new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
+            return JsonSerializer.Deserialize<MessagesConfig>(json, ReadOptions);
         }
         catch (Exception ex)
         {
@@ -114,8 +126,7 @@ public sealed class ConfigService
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<AdsConfig>(json,
-                new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
+            return JsonSerializer.Deserialize<AdsConfig>(json, ReadOptions);
         }
         catch (Exception ex)
         {
@@ -135,8 +146,7 @@ public sealed class ConfigService
         try
         {
         var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<ServersConfig>(json,
-            new JsonSerializerOptions { ReadCommentHandling = JsonCommentHandling.Skip });
+            return JsonSerializer.Deserialize<ServersConfig>(json, ReadOptions);
         }
         catch (Exception ex)
         {
@@ -147,12 +157,12 @@ public sealed class ConfigService
 
     // ---- Объединение частей ---------------------------------------------------
 
-    private Config MergeParts(SettingsConfig? settings, MessagesConfig? messages, AdsConfig? ads, ServersConfig? servers)
+    private static Config MergeParts(SettingsConfig? settings, MessagesConfig? messages, AdsConfig? ads, ServersConfig? servers)
     {
         return new Config
         {
             // Из Settings.json
-            Debug = settings?.Debug ?? true,
+            Debug = settings?.Debug ?? false,
             DefaultLang = settings?.DefaultLang ?? "RU",
             PrintToCenterHtml = settings?.PrintToCenterHtml,
             ShowHtmlWhenDead = settings?.ShowHtmlWhenDead,
@@ -163,6 +173,7 @@ public sealed class ConfigService
             ChangeTeamMessage = settings?.ChangeTeamMessage,
             JoinTeamMessage = settings?.JoinTeamMessage,
             TitleAnnounceServers = settings?.TitleAnnounceServers,
+            RestartNotify = settings?.RestartNotify,
             MapsName = settings?.MapsName,
 
             // Из Messages.json
@@ -213,26 +224,20 @@ public sealed class ConfigService
         return MergeParts(settings, messages, ads, servers);
     }
 
-    private void SaveConfig<T>(string path, T config)
+    private static void SaveConfig<T>(string path, T config)
     {
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        };
-        
-        var json = JsonSerializer.Serialize(config, options);
+        var json = JsonSerializer.Serialize(config, WriteOptions);
         File.WriteAllText(path, json, Encoding.UTF8);
     }
 
     // ---- Дефолтные значения ---------------------------------------------------
 
-    private SettingsConfig CreateDefaultSettings()
+    private static SettingsConfig CreateDefaultSettings()
     {
         return new SettingsConfig
         {
-            Debug = true,
+            // Выключен по умолчанию: Debug пишет в консоль SteamID, ник и гео каждого игрока
+            Debug = false,
             DefaultLang = "RU",
             PrintToCenterHtml = false,
             ShowHtmlWhenDead = null,
@@ -250,6 +255,26 @@ public sealed class ConfigService
             ChangeTeamMessage = "{prefix}{changeTeamMessage}",
             JoinTeamMessage = "{prefix}{joinTeamMessage}",
             TitleAnnounceServers = "{prefix}{announce_servers}",
+
+            RestartNotify = new RestartNotifyConfig
+            {
+                Enabled = true,
+                MessageType = MessageType.Chat,
+                DefaultMessage = "{prefix}{RED}{restart_in_seconds}",
+                Thresholds = new Dictionary<string, string>
+                {
+                    ["300"] = "{prefix}{RED}{update_available} {DEFAULT}{restart_in_5min}",
+                    ["60"] = "{prefix}{RED}{update_available} {DEFAULT}{restart_in_1min}",
+                    ["30"] = "{prefix}{RED}{restart_in_30sec}",
+                    ["10"] = "{prefix}{RED}{restart_in_10sec}",
+                    ["5"] = "{prefix}{RED}{restart_in_seconds}",
+                    ["4"] = "{prefix}{RED}{restart_in_seconds}",
+                    ["3"] = "{prefix}{RED}{restart_in_seconds}",
+                    ["2"] = "{prefix}{RED}{restart_in_seconds}",
+                    ["1"] = "{prefix}{RED}{restart_now}"
+                }
+            },
+
             
             MapsName = new Dictionary<string, string>
             {
@@ -265,7 +290,7 @@ public sealed class ConfigService
         };
     }
 
-    private MessagesConfig CreateDefaultMessages()
+    private static MessagesConfig CreateDefaultMessages()
     {
         return new MessagesConfig
         {
@@ -316,6 +341,64 @@ public sealed class ConfigService
                     ["DE"] = "{GREEN}{PLAYERNAME}{DEFAULT} trat {TEAM} bei"
                 },
                 
+                // Оповещение о рестарте (css_restart_notify)
+                ["update_available"] = new()
+                {
+                    ["RU"] = "Вышло обновление CS2!",
+                    ["US"] = "A new CS2 update is available!",
+                    ["UA"] = "Вийшло оновлення CS2!",
+                    ["PL"] = "Dostepna jest nowa aktualizacja CS2!",
+                    ["DE"] = "Ein neues CS2-Update ist verfugbar!"
+                },
+                ["restart_in_5min"] = new()
+                {
+                    ["RU"] = "Сервер перезапустится через 5 минут.",
+                    ["US"] = "The server will restart in 5 minutes.",
+                    ["UA"] = "Сервер перезапуститься через 5 хвилин.",
+                    ["PL"] = "Serwer zostanie zrestartowany za 5 minut.",
+                    ["DE"] = "Der Server wird in 5 Minuten neu gestartet."
+                },
+                ["restart_in_1min"] = new()
+                {
+                    ["RU"] = "Сервер перезапустится через 1 минуту.",
+                    ["US"] = "The server will restart in 1 minute.",
+                    ["UA"] = "Сервер перезапуститься через 1 хвилину.",
+                    ["PL"] = "Serwer zostanie zrestartowany za 1 minute.",
+                    ["DE"] = "Der Server wird in 1 Minute neu gestartet."
+                },
+                ["restart_in_30sec"] = new()
+                {
+                    ["RU"] = "Сервер перезапустится через 30 секунд.",
+                    ["US"] = "The server will restart in 30 seconds.",
+                    ["UA"] = "Сервер перезапуститься через 30 секунд.",
+                    ["PL"] = "Serwer zostanie zrestartowany za 30 sekund.",
+                    ["DE"] = "Der Server wird in 30 Sekunden neu gestartet."
+                },
+                ["restart_in_10sec"] = new()
+                {
+                    ["RU"] = "Сервер перезапустится через 10 секунд.",
+                    ["US"] = "The server will restart in 10 seconds.",
+                    ["UA"] = "Сервер перезапуститься через 10 секунд.",
+                    ["PL"] = "Serwer zostanie zrestartowany za 10 sekund.",
+                    ["DE"] = "Der Server wird in 10 Sekunden neu gestartet."
+                },
+                ["restart_in_seconds"] = new()
+                {
+                    ["RU"] = "Сервер перезапустится через {SECONDS} сек.",
+                    ["US"] = "The server will restart in {SECONDS} sec.",
+                    ["UA"] = "Сервер перезапуститься через {SECONDS} сек.",
+                    ["PL"] = "Serwer zostanie zrestartowany za {SECONDS} sek.",
+                    ["DE"] = "Der Server wird in {SECONDS} Sek. neu gestartet."
+                },
+                ["restart_now"] = new()
+                {
+                    ["RU"] = "Сервер перезапускается.",
+                    ["US"] = "The server is restarting.",
+                    ["UA"] = "Сервер перезапускається.",
+                    ["PL"] = "Serwer jest restartowany.",
+                    ["DE"] = "Der Server wird neu gestartet."
+                },
+
                 ["player"] = new()
                 {
                     ["RU"] = "Игрок",
@@ -438,7 +521,7 @@ public sealed class ConfigService
         };
     }
 
-    private AdsConfig CreateDefaultAds()
+    private static AdsConfig CreateDefaultAds()
     {
         return new AdsConfig
         {
@@ -498,7 +581,7 @@ public sealed class ConfigService
         };
     }
 
-    private ServersConfig CreateDefaultServers()
+    private static ServersConfig CreateDefaultServers()
     {
         return new ServersConfig
         {
@@ -530,7 +613,7 @@ public sealed class ConfigService
 
     // ---- README файл ----------------------------------------------------------
 
-    private void CreateConfigReadme(string directory)
+    private static void CreateConfigReadme(string directory)
     {
         var readmePath = Path.Combine(directory, "README.txt");
         var content = @"═══════════════════════════════════════════════════════════════════════════════
@@ -632,24 +715,26 @@ public sealed class ConfigService
 🎨 Цветовые теги
 ═══════════════════════════════════════════════════════════════════════════════
 
-{DEFAULT}     - Цвет по умолчанию
-{WHITE}       - Белый
-{DARKRED}     - Темно-красный
-{GREEN}       - Зеленый
-{LIME}        - Лайм (светло-зеленый)
-{LIGHTYELLOW} - Светло-желтый
-{YELLOW}      - Желтый / Золотой
-{GOLD}        - Золотой
-{SILVER}      - Серебряный
-{GREY}        - Серый
-{BLUE}        - Синий
-{DARKBLUE}    - Темно-синий
-{BLUEGREY}    - Серо-синий
-{MAGENTA}     - Пурпурный
-{LIGHTRED}    - Светло-красный
-{RED}         - Красный
-{ORANGE}      - Оранжевый
-{LIGHTBLUE}   - Светло-синий
+Коды берутся из CounterStrikeSharp (ChatColors) - то, что видно в игре.
+
+{DEFAULT} / {WHITE}      - Белый
+{DARKRED}                - Темно-красный
+{RED}                    - Красный
+{LIGHTRED}               - Светло-красный
+{GREEN}                  - Зеленый
+{LIME}                   - Лайм (светло-зеленый)
+{OLIVE}                  - Оливковый
+{YELLOW} / {LIGHTYELLOW} - Желтый
+{GOLD} / {ORANGE}        - Золотой / Оранжевый
+{BLUE} / {LIGHTBLUE}     - Синий
+{DARKBLUE}               - Темно-синий
+{PURPLE} / {MAGENTA}     - Фиолетовый
+{LIGHTPURPLE}            - Светло-фиолетовый (розовый)
+{GREY} / {GRAY}          - Серый
+{SILVER} / {BLUEGREY}    - Серебряный
+
+{SPACE}                  - Широкий пробел для выравнивания
+\n                       - Перенос строки
 
 ═══════════════════════════════════════════════════════════════════════════════
 🔧 Системные плейсхолдеры
@@ -794,14 +879,14 @@ css_announce_update <секунды>     - Объявить обновление
         }
 
         // Вывод предупреждений и информации
-        if (warnings.Any())
+        if (warnings.Count > 0)
         {
             _logger.Info("⚠ Configuration Warnings:");
             foreach (var warning in warnings)
                 _logger.Info($"  ⚠ {warning}");
         }
 
-        if (info.Any())
+        if (info.Count > 0)
         {
             foreach (var i in info)
                 _logger.Info($"  ℹ {i}");

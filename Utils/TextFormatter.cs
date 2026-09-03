@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
+using CounterStrikeSharp.API.Modules.Utils;
 
 namespace NotifyMessages;
 
@@ -11,57 +13,57 @@ public static class TextFormatter
     // Диапазон управляющих кодов чата CS2, используемый плагинами (\x01..\x10)
     private static readonly Regex ColorCodesRegex = new Regex("[\x01-\x10]", RegexOptions.Compiled);
 
-    // Соответствие тегов цветов управляющим кодам
-    private static readonly IReadOnlyDictionary<string, string> ColorTagMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        // Базовые
-        ["{DEFAULT}"] = "\x01",
-        ["{WHITE}"] = "\x01",
-        ["{DARKRED}"] = "\x02",
-        ["{LIGHTYELLOW}"] = "\x03",
-        ["{LIGHTBLUE}"] = "\x04",
-        ["{OLIVE}"] = "\x05",
-        ["{LIME}"] = "\x06",
-        ["{GREEN}"] = "\x06", // часто используемый синоним
-        ["{RED}"] = "\x07",
-        ["{LIGHTPURPLE}"] = "\x08",
-        ["{PURPLE}"] = "\x09",
-        ["{GREY}"] = "\x0A",
-        ["{GRAY}"] = "\x0A",
-        ["{YELLOW}"] = "\x0B",
-        ["{GOLD}"] = "\x0B", // синоним жёлтого
-        ["{SILVER}"] = "\x0D",
-        ["{BLUE}"] = "\x0E",
-        ["{DARKBLUE}"] = "\x0F",
-        ["{BLUEGREY}"] = "\x10",
+    // Широкий пробел (Hangul filler) для выравнивания — тег {SPACE}
+    private const string SpaceFiller = "\u3164\u3164\u3164";
 
-        // Дополнительные (мапим к ближайшему доступному)
-        ["{MAGENTA}"] = "\x08",     // близко к фиолетовому
-        ["{LIGHTRED}"] = "\x07",    // как красный
-        ["{ORANGE}"] = "\x0B"       // как жёлтый
-    };
+    // Соответствие тегов управляющим кодам.
+    // ИСТОЧНИК ИСТИНЫ — CounterStrikeSharp.API.Modules.Utils.ChatColors: раньше здесь была
+    // своя таблица из CS:GO/SourceMod, из-за чего половина тегов давала не тот цвет
+    // ({BLUE} рисовался пурпурным, {YELLOW} синим, {LIGHTBLUE} зелёным и т.д.).
+    private static readonly IReadOnlyDictionary<string, string> ColorTagMap =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{DEFAULT}"] = ChatColors.Default.ToString(),
+            ["{WHITE}"] = ChatColors.White.ToString(),
+            ["{DARKRED}"] = ChatColors.DarkRed.ToString(),
+            ["{LIGHTYELLOW}"] = ChatColors.LightYellow.ToString(),
+            ["{LIGHTBLUE}"] = ChatColors.LightBlue.ToString(),
+            ["{OLIVE}"] = ChatColors.Olive.ToString(),
+            ["{LIME}"] = ChatColors.Lime.ToString(),
+            ["{GREEN}"] = ChatColors.Green.ToString(),
+            ["{RED}"] = ChatColors.Red.ToString(),
+            ["{LIGHTPURPLE}"] = ChatColors.LightPurple.ToString(),
+            ["{PURPLE}"] = ChatColors.Purple.ToString(),
+            ["{GREY}"] = ChatColors.Grey.ToString(),
+            ["{GRAY}"] = ChatColors.Grey.ToString(),
+            ["{YELLOW}"] = ChatColors.Yellow.ToString(),
+            ["{GOLD}"] = ChatColors.Gold.ToString(),
+            ["{SILVER}"] = ChatColors.Silver.ToString(),
+            ["{BLUE}"] = ChatColors.Blue.ToString(),
+            ["{DARKBLUE}"] = ChatColors.DarkBlue.ToString(),
+            ["{BLUEGREY}"] = ChatColors.BlueGrey.ToString(),
+            ["{MAGENTA}"] = ChatColors.Magenta.ToString(),
+            ["{LIGHTRED}"] = ChatColors.LightRed.ToString(),
+            ["{ORANGE}"] = ChatColors.Orange.ToString()
+        };
+
+    // Порядок замены — от длинных тегов к коротким, чтобы короткий тег не съел префикс
+    // длинного. Сортируется ОДИН раз: раньше LINQ-сортировка выполнялась на каждое сообщение.
+    private static readonly KeyValuePair<string, string>[] SortedTags =
+        ColorTagMap.OrderByDescending(kv => kv.Key.Length).ToArray();
 
     /// Заменяет цветовые теги на управляющие коды движка CS2
     public static string ReplaceColorTags(this string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
 
-        // Быстрая проверка — если нет фигурных скобок, вероятно, тегов нет
+        // Быстрая проверка — если нет фигурных скобок, тегов заведомо нет
         if (input.IndexOf('{') < 0) return input;
 
-        string result = input;
+        var result = input.Replace("{SPACE}", SpaceFiller);
 
-        // Поддержка спец-тега пробела
-        result = result.Replace("{SPACE}", "\u3164\u3164\u3164"); // несколько широких пробелов
-
-        // ВАЖНО: Заменяем теги от ДЛИННЫХ к КОРОТКИМ, чтобы избежать конфликтов
-        // Например, {LIGHTBLUE} должен заменяться раньше чем {LIGHT} (если бы он был)
-        // Используем порядок по убыванию длины ключа
-        var sortedTags = ColorTagMap.OrderByDescending(kv => kv.Key.Length);
-        
-        foreach (var kv in sortedTags)
+        foreach (var kv in SortedTags)
         {
-            // Используем простой case-insensitive Replace
             if (result.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
                 result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
         }
@@ -84,7 +86,7 @@ public static class TextFormatter
         bool startsWithCode = first >= '\x01' && first <= '\x10';
         if (startsWithCode) return input;
         // Префиксуем только если в строке уже есть цветовые коды
-        return ColorCodesRegex.IsMatch(input) ? "\x01" + input : input;
+        return ColorCodesRegex.IsMatch(input) ? ChatColors.Default + input : input;
     }
 
     // Вспомогательный Replace с игнором регистра
@@ -93,7 +95,7 @@ public static class TextFormatter
         int index = text.IndexOf(search, comparison);
         if (index < 0) return text;
 
-        var result = new System.Text.StringBuilder(text.Length);
+        var result = new StringBuilder(text.Length);
         int lastIndex = 0;
         while (index >= 0)
         {

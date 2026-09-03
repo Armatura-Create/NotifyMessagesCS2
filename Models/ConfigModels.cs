@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace NotifyMessages;
@@ -8,7 +9,7 @@ namespace NotifyMessages;
 public class Config
 {
     // Основные настройки из Settings.json
-    public bool Debug { get; set; } = true;
+    public bool Debug { get; set; }
     public string? DefaultLang { get; init; }
     public bool? PrintToCenterHtml { get; init; }
     public bool? ShowHtmlWhenDead { get; set; }
@@ -19,6 +20,7 @@ public class Config
     public string? ChangeTeamMessage { get; set; }
     public string? JoinTeamMessage { get; set; }
     public string? TitleAnnounceServers { get; set; }
+    public RestartNotifyConfig? RestartNotify { get; set; }
     public Dictionary<string, string>? MapsName { get; init; }
 
     // Сообщения из Messages.json
@@ -36,7 +38,7 @@ public class Config
 // ----------------- Settings.json -------------------
 public class SettingsConfig
 {
-    public bool Debug { get; set; } = true;
+    public bool Debug { get; set; }
     public string DefaultLang { get; set; } = "RU";
     public bool? PrintToCenterHtml { get; set; }
     public bool? ShowHtmlWhenDead { get; set; }
@@ -47,7 +49,41 @@ public class SettingsConfig
     public string? ChangeTeamMessage { get; set; }
     public string? JoinTeamMessage { get; set; }
     public string? TitleAnnounceServers { get; set; }
+    public RestartNotifyConfig? RestartNotify { get; set; }
     public Dictionary<string, string>? MapsName { get; set; }
+}
+
+/// Оповещение игроков о предстоящем рестарте/обновлении.
+/// Вызывается извне командой `css_restart_notify <секунды>` — например, апдейтером,
+/// который сейчас шлёт в консоль голый `say`.
+public class RestartNotifyConfig
+{
+    public bool Enabled { get; set; } = true;
+
+    /// Куда выводить: 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert
+    public MessageType MessageType { get; set; } = MessageType.Chat;
+
+    /// Шаблон для секунд, которых нет в Thresholds. Поддерживает {SECONDS} и {TIME_RESTART}
+    public string DefaultMessage { get; set; } = "{prefix}{RED}{restart_in_seconds}";
+
+    /// Точные отсечки: количество секунд -> шаблон сообщения.
+    /// Ключ строкой, потому что JSON-объект не умеет числовые ключи.
+    public Dictionary<string, string> Thresholds { get; set; } = new();
+
+    /// Шаблон для указанной отсечки: точное совпадение, иначе DefaultMessage.
+    /// Осознанно без «ближайшего» порога — на 4 секундах показать «через 5 секунд»
+    /// или «сервер перезапускается» одинаково неверно, честнее общий шаблон с {SECONDS}.
+    public string? ResolveTemplate(int seconds)
+    {
+        if (Thresholds != null &&
+            Thresholds.TryGetValue(seconds.ToString(CultureInfo.InvariantCulture), out var template) &&
+            !string.IsNullOrEmpty(template))
+        {
+            return template;
+        }
+
+        return string.IsNullOrEmpty(DefaultMessage) ? null : DefaultMessage;
+    }
 }
 
 // ----------------- Messages.json -------------------
@@ -67,7 +103,7 @@ public class AdsConfig
 // ----------------- Servers.json -------------------
 public class ServersConfig
 {
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; }
     public float Interval { get; set; } = 60;
     public int? QueryTimeoutMs { get; set; } = 500;
     public int? CacheTtlSeconds { get; set; } = 30;
@@ -84,10 +120,24 @@ public class WelcomeMessage
 public class Advertisement
 {
     public float Interval { get; init; }
-    public List<Dictionary<string, string>> Messages { get; init; } = null!;
+    public List<Dictionary<string, string>> Messages { get; init; } = new();
 
     private int _currentMessageIndex;
-    [JsonIgnore] public Dictionary<string, string> NextMessages => Messages[_currentMessageIndex++ % Messages.Count];
+
+    /// Следующий набор сообщений блока по кругу, либо null если блок пустой.
+    /// Индекс сбрасывается вручную: раньше он рос без границ и после переполнения int
+    /// давал отрицательный остаток -> IndexOutOfRange.
+    [JsonIgnore]
+    public Dictionary<string, string>? NextMessages
+    {
+        get
+        {
+            if (Messages == null || Messages.Count == 0) return null;
+
+            if (_currentMessageIndex >= Messages.Count) _currentMessageIndex = 0;
+            return Messages[_currentMessageIndex++];
+        }
+    }
 }
 
 public enum MessageType
@@ -95,7 +145,8 @@ public enum MessageType
     Chat = 0,
     Center,
     CenterHtml,
-    Console
+    Console,
+    Alert
 }
 
 // ── Alias для обратной совместимости внутри кода ──────────────────────────────

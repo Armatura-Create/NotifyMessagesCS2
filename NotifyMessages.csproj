@@ -1,13 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Platforms>AnyCPU;x86</Platforms>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TargetFramework>net10.0</TargetFramework>
+    <Platforms>AnyCPU</Platforms>
     <Nullable>enable</Nullable>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <RootNamespace>NotifyMessages</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>2.1.0</Version>
     <AssemblyName>NotifyMessages</AssemblyName>
 
     <!-- Packaging paths -->
@@ -19,8 +18,14 @@
     <GeoLiteLicenseKey Condition=" '$(GeoLiteLicenseKey)' == '' ">$(MAXMIND_LICENSE_KEY)</GeoLiteLicenseKey>
   </PropertyGroup>
 
+  <!-- Тестовый проект лежит внутри дерева плагина — не тянем его в сборку плагина -->
   <ItemGroup>
-    <PackageReference Include="CounterStrikeSharp.API" Version="*" />
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.373" />
     <PackageReference Include="MaxMind.GeoIP2" Version="5.3.0" />
   </ItemGroup>
 

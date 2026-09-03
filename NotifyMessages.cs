@@ -1,16 +1,18 @@
-﻿using CounterStrikeSharp.API;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
 
 namespace NotifyMessages;
 
-[MinimumApiVersion(339)]
+[MinimumApiVersion(373)]
 public partial class NotifyMessages : BasePlugin
 {
     public override string ModuleAuthor => "Armatura";
     public override string ModuleName => "NotifyMessages";
-    public override string ModuleVersion => "v2.0.0";
+    public override string ModuleVersion => "v2.1.0";
 
+    // Задержка перед сообщением о входе — игрок должен успеть догрузиться
+    private const float JoinAnnounceDelaySeconds = 3.0f;
 
     private SessionService _sessionService = null!;
     private DisplayService _displayService = null!;
@@ -28,7 +30,6 @@ public partial class NotifyMessages : BasePlugin
     public override void Load(bool hotReload)
     {
         _logger = new PluginLogger(() => Config?.Debug == true);
-        LogService.Current = _logger;
         _configService = new ConfigService(_logger);
         Config = _configService.LoadOrCreate(Application.RootDirectory);
         _geoIpService = new GeoIpService(ModuleDirectory, _logger);
@@ -36,22 +37,12 @@ public partial class NotifyMessages : BasePlugin
             steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
         _sessionService = new SessionService();
         _displayService = new DisplayService(Config, _messageProcessor, _logger);
-        _serverStatusService = new ServerStatusService(
-            Config,
-            _logger,
-            (interval, action) => AddTimer(interval, action),
-            (interval, action, flags) => AddTimer(interval, action, flags),
-            action => AddTimer(0.0f, action));
-        _advertisementService = new AdvertisementService(
-            Config,
-            _messageProcessor,
-            _logger,
-            (interval, action, flags) => AddTimer(interval, action, flags),
-            _displayService.Print);
+        _serverStatusService = CreateServerStatusService();
+        _advertisementService = CreateAdvertisementService();
 
         RegisterEvents();
 
-        _serverStatusService.InitialQuery(); // первичное заполнение кеша
+        _serverStatusService.InitialQuery(); // первичное заполнение кеша (в фоне)
         _advertisementService.Start(); // реклама/сообщения
         _serverStatusService.Start(); // периодический опрос серверов
 
@@ -65,7 +56,18 @@ public partial class NotifyMessages : BasePlugin
             OnClientAuthorized(player.Slot, player.AuthorizedSteamID);
         }
     }
-    
+
+    private ServerStatusService CreateServerStatusService() => new(
+        Config,
+        _logger,
+        (interval, action, flags) => AddTimer(interval, action, flags));
+
+    private AdvertisementService CreateAdvertisementService() => new(
+        Config,
+        _logger,
+        (interval, action, flags) => AddTimer(interval, action, flags),
+        _displayService.Print);
+
     private void OnTick()
     {
         _displayService.OnTick();
@@ -79,8 +81,9 @@ public partial class NotifyMessages : BasePlugin
         _sessionService?.Clear();
 
         // Clear state
-        _geoIpService.ClearPlayers();
+        _geoIpService?.ClearPlayers();
         _displayService?.ClearUsers();
+        _serversCommandCooldown.Clear();
 
         try { _geoIpService?.Dispose(); } catch { /* ignore */ }
     }
