@@ -5,6 +5,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-%E2%89%A5%201.0.369-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-2ea44f)](#)
+[![Downloads](https://img.shields.io/github/downloads/Armatura-Create/NotifyMessagesCS2/total?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases)
 [![Release](https://img.shields.io/badge/Release-ZIP%20package-success)](#-build-and-packaging)
 [![GeoLite2](https://img.shields.io/badge/GeoLite2-Auto--download-009688)](#-geolite2-data-build-time-download)
 
