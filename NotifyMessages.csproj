@@ -25,7 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.373" />
+    <!-- Собираем против МИНИМАЛЬНОЙ поддерживаемой версии, а не самой свежей:
+         компиляция тогда сама доказывает, что API из более новых сборок не используется,
+         и плагин грузится на любом сервере с CSSharp >= 1.0.369.
+         1.0.369 — первая версия на .NET 10, ниже net10.0-плагин не загрузить.
+         Значение обязано совпадать с [MinimumApiVersion] в NotifyMessages.cs. -->
+    <PackageReference Include="CounterStrikeSharp.API" Version="1.0.369" />
     <PackageReference Include="MaxMind.GeoIP2" Version="5.3.0" />
   </ItemGroup>
 

@@ -3,7 +3,7 @@
 **English** | [Русский](README.ru.md)
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
-[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-%E2%89%A5%201.0.373-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
+[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-%E2%89%A5%201.0.369-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
 [![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-2ea44f)](#)
 [![Release](https://img.shields.io/badge/Release-ZIP%20package-success)](#-build-and-packaging)
 [![GeoLite2](https://img.shields.io/badge/GeoLite2-Auto--download-009688)](#-geolite2-data-build-time-download)
@@ -25,10 +25,13 @@ via A2S queries.
 
 ## 📦 Installation
 
-> **Requires CounterStrikeSharp v1.0.373 or newer.** Since v1.0.369 CounterStrikeSharp runs on
+> **Requires CounterStrikeSharp v1.0.369 or newer.** v1.0.369 is the first release running on
 > .NET 10, and this plugin targets `net10.0` — it will not load on older CounterStrikeSharp builds.
+>
+> The plugin is compiled against 1.0.369 on purpose — the minimum it supports — so the build itself
+> proves no newer API is used. It runs on any later 1.0.x as well.
 
-1. Install [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) (>= v1.0.373) and Metamod:Source
+1. Install [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) (>= v1.0.369) and Metamod:Source
 2. Download `NotifyMessages.zip` from the releases page, or build it yourself
 3. Extract the archive into the root of your game server
 
@@ -371,7 +374,8 @@ dotnet test
 
 Coverage focuses on the parts that actually broke: parsing of untrusted A2S packets (truncated
 and garbage input), color tags, IP extraction (IPv6 included), advertisement rotation, and
-`css_restart_notify` template selection.
+`css_restart_notify` template selection, plus a guard that `MinimumApiVersion` never drifts
+above the CounterStrikeSharp build the plugin is compiled against.
 
 ### CI and releases:
 
@@ -421,7 +425,7 @@ addresses always fall back to `DefaultLang`.
 
 ### Compatibility
 
-- CounterStrikeSharp **>= 1.0.373** (`MinimumApiVersion` 373), .NET 10
+- CounterStrikeSharp **>= 1.0.369** (`MinimumApiVersion` 369), .NET 10
 - Linux and Windows
 
 ### Security
@@ -439,7 +443,7 @@ See [Русская версия](README.ru.md#-исправленные-баг�
 
 **2.1.0 highlights:** correct CS2 color codes, UTF-8 server names, non-blocking A2S polling,
 `css_restart_notify` for updater integration, `Alert` output channel, .NET 10 / CounterStrikeSharp
-1.0.373, test suite and release automation.
+1.0.369+, test suite and release automation.
 
 ---
 

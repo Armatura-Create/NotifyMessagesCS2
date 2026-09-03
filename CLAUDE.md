@@ -3,8 +3,13 @@
 Плагин **NotifyMessages** для CounterStrikeSharp (CS2): уведомления, реклама, приветствия,
 локализация по GeoIP и мониторинг чужих серверов через A2S.
 
-- `net10.0`, namespace `NotifyMessages`, `[MinimumApiVersion(373)]`
-- Зависимости: `CounterStrikeSharp.API` `1.0.373` (пин, не `*`), `MaxMind.GeoIP2` `5.3.0`
+- `net10.0`, namespace `NotifyMessages`, `[MinimumApiVersion(369)]`
+- Зависимости: `CounterStrikeSharp.API` `1.0.369` (пин, не `*`), `MaxMind.GeoIP2` `5.3.0`
+- **Собираемся против МИНИМАЛЬНОЙ поддерживаемой версии CSSharp, а не самой свежей.** Тогда
+  компиляция сама доказывает, что API из более новых сборок не используется, и плагин грузится
+  на любом сервере с 1.0.369+. Версия пакета в `.csproj` и `[MinimumApiVersion]` обязаны
+  совпадать — это проверяет `ApiVersionTests`. Реальный инцидент: с `MinimumApiVersion(373)`
+  сервер на 1.0.371 отказался грузить плагин, хотя ничего из 372-373 в коде не было.
 - `net10.0` — не выбор, а требование: CSSharp с v1.0.369 работает на .NET 10, и пакет
   `CounterStrikeSharp.API` таргетит `net10.0`. Официальные docs всё ещё показывают `net8.0` — они отстали.
 - SDK стоит в `~/.dotnet` (не в PATH по умолчанию): `export PATH="$HOME/.dotnet:$PATH"`
@@ -153,7 +158,7 @@ Config (шаблон с {ключами})
 
 ## Меню в CounterStrikeSharp (разведка 2026-09-03)
 
-Во фреймворке 1.0.373 встроены только `ChatMenu`, `CenterHtmlMenu`, `ConsoleMenu`
+Во фреймворке 1.0.369+ встроены только `ChatMenu`, `CenterHtmlMenu`, `ConsoleMenu`
 (через `MenuManager.OpenChatMenu/OpenCenterHtmlMenu/OpenConsoleMenu`).
 `ScreenMenu`, `WasdMenu`, `PanoramaVote` — это **сторонние** пакеты (CS2ScreenMenuAPI,
 CS2MenuManager), в самом CSSharp их нет. Примитив `CPointWorldText` есть — на нём сторонние

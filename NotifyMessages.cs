@@ -4,7 +4,9 @@ using CounterStrikeSharp.API.Core.Attributes;
 
 namespace NotifyMessages;
 
-[MinimumApiVersion(373)]
+// Минимум = 1.0.369: первая версия CounterStrikeSharp на .NET 10.
+// Не поднимать без реальной нужды — это отсечёт сервера, на которых плагин работает.
+[MinimumApiVersion(369)]
 public partial class NotifyMessages : BasePlugin
 {
     public override string ModuleAuthor => "Armatura";
