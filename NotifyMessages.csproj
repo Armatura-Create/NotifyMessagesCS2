@@ -8,6 +8,10 @@
     <RootNamespace>NotifyMessages</RootNamespace>
     <Version>2.1.0</Version>
     <AssemblyName>NotifyMessages</AssemblyName>
+    <Authors>Armatura</Authors>
+    <Copyright>Copyright (C) 2025-2026 Armatura</Copyright>
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/Armatura-Create/NotifyMessagesCS2</PackageProjectUrl>
 
     <!-- Packaging paths -->
     <PackageRoot>$(OutputPath)PackageRoot/</PackageRoot>

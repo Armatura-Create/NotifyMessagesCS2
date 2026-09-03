@@ -696,6 +696,32 @@ dotnet build -c Release -p:GeoLiteLicenseKey=ВАШ_КЛЮЧ
 
 ---
 
+## 📄 Лицензия
+
+Copyright (C) 2025-2026 Armatura
+
+Это свободное программное обеспечение: вы можете распространять и/или изменять его на условиях
+GNU General Public License, опубликованной Free Software Foundation, версии 3 или (на ваш выбор)
+любой более поздней версии.
+
+Программа распространяется в надежде, что она будет полезной, но **без каких-либо гарантий**;
+даже без подразумеваемой гарантии товарного состояния или пригодности для конкретной цели.
+Подробности — в [GNU General Public License](LICENSE).
+
+### Сторонние компоненты
+
+| Компонент | Лицензия |
+|-----------|----------|
+| [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) | MIT |
+| [MaxMind.GeoIP2](https://github.com/maxmind/GeoIP2-dotnet) | Apache-2.0 |
+| Базы GeoLite2 (`GeoIP/*.mmdb`) | [MaxMind GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) — **не** покрываются GPL этого проекта |
+
+Базы GeoLite2, лежащие в `GeoIP/` и попадающие в релизные архивы, остаются под условиями MaxMind.
+Продукт содержит данные GeoLite2, созданные MaxMind, доступные на
+[maxmind.com](https://www.maxmind.com).
+
+---
+
 ## 💬 Поддержка
 
 Если у вас возникли вопросы или проблемы:

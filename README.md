@@ -447,6 +447,32 @@ See [Русская версия](README.ru.md#-исправленные-баг�
 
 ---
 
+## 📄 License
+
+Copyright (C) 2025-2026 Armatura
+
+This program is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but **without any warranty**;
+without even the implied warranty of merchantability or fitness for a particular purpose.
+See the [GNU General Public License](LICENSE) for more details.
+
+### Third-party components
+
+| Component | License |
+|-----------|---------|
+| [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) | MIT |
+| [MaxMind.GeoIP2](https://github.com/maxmind/GeoIP2-dotnet) | Apache-2.0 |
+| GeoLite2 databases (`GeoIP/*.mmdb`) | [MaxMind GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) — **not** covered by this project's GPL |
+
+The GeoLite2 databases shipped in `GeoIP/` and in release archives remain under MaxMind's own
+terms. This product includes GeoLite2 data created by MaxMind, available from
+[maxmind.com](https://www.maxmind.com).
+
+---
+
 ## 💬 Support
 
 Issues and pull requests are welcome.
