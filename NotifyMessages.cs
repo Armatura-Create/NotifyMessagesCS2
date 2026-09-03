@@ -60,7 +60,7 @@ public partial class NotifyMessages : BasePlugin
     {
         _logger = new PluginLogger(() => Config?.Debug == true);
         _configService = new ConfigService(_logger);
-        Config = _configService.LoadOrCreate(Application.RootDirectory);
+        Config = LoadConfigSafely();
         _geoIpService = new GeoIpService(ModuleDirectory, _logger);
         _messageProcessor = new MessageProcessor(Config,
             steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
@@ -71,18 +71,54 @@ public partial class NotifyMessages : BasePlugin
 
         RegisterEvents();
 
-        _serverStatusService.InitialQuery(); // первичное заполнение кеша (в фоне)
-        _advertisementService.Start(); // реклама/сообщения
-        _serverStatusService.Start(); // периодический опрос серверов
+        // Дальше идут необязательные подсистемы. Кривой Servers.json или Ads.json не должен
+        // валить весь плагин — логируем и продолжаем без этой части.
+        SafeRun("первичный опрос серверов", () => _serverStatusService.InitialQuery());
+        SafeRun("реклама", () => _advertisementService.Start());
+        SafeRun("периодический опрос серверов", () => _serverStatusService.Start());
 
         if (!hotReload) return;
 
-        _geoIpService.ClearPlayers();
-
-        foreach (var player in Utilities.GetPlayers())
+        SafeRun("восстановление гео-кеша после hot reload", () =>
         {
-            if (player.IsBot || !player.IsValid || player.AuthorizedSteamID == null) continue;
-            OnClientAuthorized(player.Slot, player.AuthorizedSteamID);
+            _geoIpService.ClearPlayers();
+
+            foreach (var player in Utilities.GetPlayers())
+            {
+                if (player.IsBot || !player.IsValid || player.AuthorizedSteamID == null) continue;
+                OnClientAuthorized(player.Slot, player.AuthorizedSteamID);
+            }
+        });
+    }
+
+    /// Загрузка конфигурации, которая не роняет плагин.
+    /// Пустой Config безопасен: все подсистемы проверяют свои секции на null и просто молчат.
+    private Config LoadConfigSafely()
+    {
+        try
+        {
+            return _configService.LoadOrCreate(Application.RootDirectory);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(
+                "[Load] Конфигурацию загрузить не удалось — плагин стартует с пустыми настройками " +
+                "и ничего показывать не будет. Проверьте configs/plugins/NotifyMessages " +
+                "и выполните css_reload_advert", ex);
+            return new Config();
+        }
+    }
+
+    /// Запускает необязательную подсистему, не давая её падению сорвать загрузку плагина
+    private void SafeRun(string what, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"[Load] Подсистема отключена из-за ошибки: {what}", ex);
         }
     }
 

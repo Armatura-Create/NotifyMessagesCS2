@@ -14,6 +14,12 @@ public sealed class DisplayService
     // Раньше null означал "погасить на первом же тике", т.е. HTML-центр не работал вовсе.
     private const float DefaultHtmlDurationSeconds = 5f;
 
+    // Размер массива слотов. Константа, а НЕ Server.MaxPlayers: сервис создаётся в Load(),
+    // где нативы движка ещё недоступны ("Global Variables not initialized yet").
+    // CS2 поддерживает до 64 игроков; запас взят с большим излишком, это ~1 КБ ссылок.
+    // От выхода за границы страхует проверка в SetHtmlPrintSettings/ClearUser.
+    private const int MaxSlots = 128;
+
     private Config _config;
     private MessageProcessor _messageProcessor;
     private readonly ILogger _logger;
@@ -30,12 +36,9 @@ public sealed class DisplayService
         _messageProcessor = messageProcessor;
         _logger = logger;
 
-        // Размер берём от сервера, а не константой 66: на нестандартном maxplayers
-        // индексация по player.Slot выходила за границы массива.
-        var slots = Math.Max(65, Server.MaxPlayers + 1);
-        _users = new User?[slots];
+        _users = new User?[MaxSlots];
 
-        _logger.Debug($"[DisplayService] Initialized with Debug={_config.Debug}, slots={slots}");
+        _logger.Debug($"[DisplayService] Initialized with Debug={_config.Debug}, slots={MaxSlots}");
     }
 
     public void Update(Config config, MessageProcessor messageProcessor)

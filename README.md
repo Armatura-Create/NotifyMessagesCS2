@@ -69,6 +69,16 @@ with full documentation.
 
 After editing, run `css_reload_advert` to apply changes without restarting the server.
 
+**A broken config will not take the plugin down.** If a file fails to parse, the plugin logs the
+file name, line and position of the error, falls back to defaults *for that file only*, and keeps
+running — the other three files are still read normally. The broken file is never overwritten, so
+your edits are safe. Trailing commas and `//` comments are accepted on purpose.
+
+```
+[Config] Settings.json: ошибка в JSON — строка 3, позиция 2. Файл: .../Settings.json.
+         Весь файл проигнорирован, используются значения по умолчанию.
+```
+
 ---
 
 ### 📄 Settings.json — core settings

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Globalization;
 using System.Collections.Generic;
 
 namespace NotifyMessages;
@@ -27,6 +28,9 @@ public sealed class ConfigService
 
     private readonly ILogger _logger;
 
+    // Файлы, которые не удалось прочитать в этом заходе — чтобы громко сказать об этом в конце
+    private readonly List<string> _failedFiles = new();
+
     public ConfigService(ILogger logger)
     {
         _logger = logger;
@@ -37,6 +41,8 @@ public sealed class ConfigService
     /// Загружает конфигурацию из 4 файлов и объединяет в единый Config
     public Config LoadOrCreate(string rootDirectory)
     {
+        _failedFiles.Clear();
+
         var directory = Path.Combine(rootDirectory, "configs/plugins/NotifyMessages");
         Directory.CreateDirectory(directory);
 
@@ -75,82 +81,71 @@ public sealed class ConfigService
 
     // ---- Загрузка отдельных файлов --------------------------------------------
 
-    private SettingsConfig? LoadSettings(string path)
-    {
-        if (!File.Exists(path))
-        {
-            _logger.Info($"[Config] Settings.json not found, using defaults");
-            return null;
-        }
-        
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<SettingsConfig>(json, ReadOptions);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"[Config] Failed to load Settings.json", ex);
-            return null;
-        }
-    }
+    private SettingsConfig? LoadSettings(string path) => LoadPart<SettingsConfig>(path, "Settings.json");
+    private MessagesConfig? LoadMessages(string path) => LoadPart<MessagesConfig>(path, "Messages.json");
+    private AdsConfig? LoadAds(string path) => LoadPart<AdsConfig>(path, "Ads.json");
+    private ServersConfig? LoadServers(string path) => LoadPart<ServersConfig>(path, "Servers.json");
 
-    private MessagesConfig? LoadMessages(string path)
+    /// Читает одну часть конфига. Любая проблема с файлом — не повод падать:
+    /// возвращаем null, а MergeParts подставит значения по умолчанию.
+    /// Сообщение об ошибке обязано говорить, ЧТО и ГДЕ чинить: путь, строка, позиция.
+    private T? LoadPart<T>(string path, string fileName) where T : class
     {
         if (!File.Exists(path))
         {
-            _logger.Info($"[Config] Messages.json not found");
+            _logger.Info($"[Config] {fileName} не найден — используются значения по умолчанию");
             return null;
         }
-        
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<MessagesConfig>(json, ReadOptions);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"[Config] Failed to load Messages.json", ex);
-            return null;
-        }
-    }
 
-    private AdsConfig? LoadAds(string path)
-    {
-        if (!File.Exists(path))
-        {
-            _logger.Info($"[Config] Ads.json not found");
-            return null;
-        }
-        
+        string json;
         try
         {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<AdsConfig>(json, ReadOptions);
+            json = File.ReadAllText(path);
         }
         catch (Exception ex)
         {
-            _logger.Error($"[Config] Failed to load Ads.json", ex);
+            _logger.Error($"[Config] {fileName}: не удалось прочитать файл {path}. " +
+                          "Проверьте права доступа. Используются значения по умолчанию", ex);
+            _failedFiles.Add(fileName);
             return null;
         }
-    }
 
-    private ServersConfig? LoadServers(string path)
-    {
-        if (!File.Exists(path))
+        if (string.IsNullOrWhiteSpace(json))
         {
-            _logger.Info($"[Config] Servers.json not found");
+            _logger.Error($"[Config] {fileName} пуст ({path}). Используются значения по умолчанию");
+            _failedFiles.Add(fileName);
             return null;
         }
-        
+
         try
         {
-        var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<ServersConfig>(json, ReadOptions);
+            var result = JsonSerializer.Deserialize<T>(json, ReadOptions);
+            if (result == null)
+            {
+                _logger.Error($"[Config] {fileName}: файл содержит null вместо объекта ({path}). " +
+                              "Используются значения по умолчанию");
+                _failedFiles.Add(fileName);
+            }
+
+            return result;
+        }
+        catch (JsonException ex)
+        {
+            // LineNumber нумеруется с нуля — приводим к привычному виду
+            var line = ex.LineNumber.HasValue ? (ex.LineNumber.Value + 1).ToString(CultureInfo.InvariantCulture) : "?";
+            var pos = ex.BytePositionInLine?.ToString(CultureInfo.InvariantCulture) ?? "?";
+
+            _logger.Error($"[Config] {fileName}: ошибка в JSON — строка {line}, позиция {pos}. " +
+                          $"Файл: {path}. Весь файл проигнорирован, используются значения по умолчанию. " +
+                          $"Проверьте синтаксис (лишняя/пропущенная запятая, кавычки, скобки). Подробности: {ex.Message}");
+            _failedFiles.Add(fileName);
+            return null;
         }
         catch (Exception ex)
         {
-            _logger.Error($"[Config] Failed to load Servers.json", ex);
+            _logger.Error($"[Config] {fileName}: не удалось разобрать {path}. " +
+                          "Используются значения по умолчанию", ex);
+            _failedFiles.Add(fileName);
             return null;
         }
     }
@@ -876,6 +871,19 @@ css_announce_update <секунды>     - Объявить обновление
                 warnings.Add("Servers enabled but List is empty");
             else
                 info.Add($"Loaded {config.Servers.List.Count} server(s) for status checking");
+        }
+
+        if (_failedFiles.Count > 0)
+        {
+            _logger.Info("===============================================================");
+            _logger.Info($"  ВНИМАНИЕ: не удалось прочитать {_failedFiles.Count} файл(ов) конфигурации:");
+            foreach (var f in _failedFiles)
+                _logger.Info($"    - {f}");
+            _logger.Info("  Для них взяты значения по умолчанию. Смотрите строки [ERROR] выше:");
+            _logger.Info("  там указаны файл, строка и позиция ошибки.");
+            _logger.Info($"  Каталог конфигов: {directory}");
+            _logger.Info("  Починив файлы, примените их командой css_reload_advert.");
+            _logger.Info("===============================================================");
         }
 
         // Вывод предупреждений и информации

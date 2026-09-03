@@ -87,6 +87,16 @@ Config (шаблон с {ключами})
   подвешивало сервер до `timeout+250` мс на каждый адрес.
 - **`MessageProcessor.ProcessMessage` — только главный поток** (внутри `ConVar.Find`,
   `NativeAPI.GetMapName`, `Utilities.GetPlayers`).
+- **В `Load()` и в конструкторах сервисов нативов быть не должно.** На этом этапе движок ещё
+  не поднял глобальные переменные, и любой `Server.*` / `NativeAPI.*` падает с
+  `NativeException: Global Variables not initialized yet`, а плагин не грузится вовсе.
+  Реальный инцидент: `Server.MaxPlayers` в конструкторе `DisplayService` (отсюда константа
+  `MaxSlots = 128` вместо размера от сервера). Нативы можно звать только из событий, команд,
+  таймеров и `OnTick` — там движок уже готов. Ловит `ServiceConstructionTests`.
+- **Ошибка в одной подсистеме не должна ронять загрузку.** Необязательные части
+  (реклама, опрос серверов, восстановление после hot reload) запускаются через
+  `SafeRun(...)` в `NotifyMessages.cs`; конфиг читается через `LoadConfigSafely()`,
+  который в худшем случае отдаёт пустой `Config` — все секции проверяются на null.
 - **Цветовые коды берутся из `ChatColors` CounterStrikeSharp.** Свою таблицу заводить нельзя:
   ровно из-за неё половина тегов до 2.1.0 давала не тот цвет.
 - **`css_reload_advert` пересоздаёт часть сервисов.** `MessageProcessor`,
@@ -120,6 +130,12 @@ Config (шаблон с {ключами})
 Четыре файла в `csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/`:
 `Settings.json`, `Messages.json`, `Ads.json`, `Servers.json` (+ генерируемый `README.txt`).
 Если нет ни одного — `ConfigService.CreateDefaultConfigs` создаёт все четыре с примерами.
+
+Битый файл **не роняет плагин и не перезаписывается**: `ConfigService.LoadPart<T>` ловит
+`JsonException`, пишет в лог файл, строку и позицию ошибки, добавляет файл в `_failedFiles`,
+и `ValidateConfig` в конце печатает громкую сводку. Для этого файла берутся значения
+по умолчанию, остальные читаются как обычно. Trailing commas и `//`-комментарии разрешены
+осознанно (`ReadOptions`) — это самые частые «ошибки», данные из них читаются однозначно.
 
 Модели в `Models/ConfigModels.cs`: по классу на файл (`SettingsConfig`, `MessagesConfig`,
 `AdsConfig`, `ServersConfig`) плюс общий `Config`, который `ConfigService.MergeParts`

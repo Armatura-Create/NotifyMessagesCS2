@@ -154,7 +154,7 @@ public partial class NotifyMessages
     {
         _logger.Info($"[COMMAND] css_reload_advert executed by {controller?.PlayerName ?? "Console"}");
 
-        Config = _configService.LoadOrCreate(Application.RootDirectory);
+        Config = LoadConfigSafely();
         _messageProcessor = new MessageProcessor(Config,
             steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
         _displayService.Update(Config, _messageProcessor);
