@@ -26,9 +26,15 @@ public partial class NotifyMessages
             SafeEvent(() => EventPlayerTeamChange(ev, info), nameof(EventPlayerTeamChange)));
 
         // Listeners
-        RegisterListener<Listeners.OnClientAuthorized>((slot, id) =>
-            SafeEvent(() => { OnClientAuthorized(slot, id); return HookResult.Continue; }, nameof(OnClientAuthorized)));
-
+        //
+        // Listeners.OnClientAuthorized здесь СОЗНАТЕЛЬНО не регистрируется.
+        // Единственное, что мы делали в нём, — кеш гео по IP, а получить IP можно было только
+        // через Utilities.GetPlayerFromSlot(slot). На момент авторизации Steam контроллера
+        // в этом слоте ещё может не быть (или он принадлежит предыдущему игроку), а
+        // GetPlayerFromSlot оборачивает в CCSPlayerController любую сущность с таким индексом,
+        // не проверяя тип: чтение IpAddress уходит по чужим смещениям и роняет сервер без
+        // единой строки в логе. Гео кешируется в EventPlayerConnectFull, где контроллер
+        // приходит из самого события и точно существует.
         RegisterListener<Listeners.OnTick>(OnTickSafe);
     }
 

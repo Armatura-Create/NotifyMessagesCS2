@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Core.Translations;
 
 namespace NotifyMessages;
@@ -14,6 +13,8 @@ public partial class NotifyMessages
     // --- События игрока ---
     private HookResult EventPlayerDisconnect(EventPlayerDisconnect ev, GameEventInfo info)
     {
+        _logger.Debug("[LEAVE] 1/4 Disconnect: событие получено");
+
         var player = ev.Userid;
         // IsValid здесь НЕ проверяем: контроллер уже может быть частично разобран,
         // но почистить сессию и гео-кеш всё равно обязаны
@@ -27,6 +28,7 @@ public partial class NotifyMessages
         string playerName;
         try
         {
+            _logger.Debug("[LEAVE] 2/4 читаю SteamID и ник с разбираемого контроллера");
             steamId = player.SteamID;
             playerName = player.PlayerName;
         }
@@ -36,8 +38,7 @@ public partial class NotifyMessages
             return HookResult.Continue;
         }
 
-        if (Config.Debug)
-            _logger.Info($"[EVENT] Player disconnected: {playerName} (SteamID: {steamId})");
+        _logger.Debug($"[LEAVE] 3/4 игрок {playerName} (SteamID {steamId}) отключился");
 
         if (_sessionService.TryKillAndRemoveConnectionTimer(steamId))
         {
@@ -61,11 +62,14 @@ public partial class NotifyMessages
             }
         }
 
+        _logger.Debug($"[LEAVE] 4/4 чищу состояние игрока {playerName}");
+
         _sessionService.RemoveFullyConnected(steamId);
         _sessionService.RemoveLanguage(steamId);
         _geoIpService.RemovePlayer(steamId);
         _serversCommandCooldown.Remove(steamId); // иначе словарь растёт всё время жизни сервера
 
+        _logger.Debug("[LEAVE] Disconnect завершён");
         return HookResult.Continue;
     }
 
@@ -75,29 +79,37 @@ public partial class NotifyMessages
         return HookResult.Continue;
     }
 
-    private void OnClientAuthorized(int slot, SteamID id)
+    /// Кеширует страну и город игрока по его IP.
+    ///
+    /// Контроллер приходит СВЕРХУ — из события или из Utilities.GetPlayers(), — и никогда
+    /// не добывается по номеру слота. Utilities.GetPlayerFromSlot(slot) внутри делает
+    /// new CCSPlayerController(EntitySystem.GetEntityByIndex(slot + 1)) без проверки типа
+    /// сущности: на авторизации Steam контроллера в слоте может ещё не быть, и чтение
+    /// IpAddress уходит по смещениям чужой энтити — сервер падает без записи в лог,
+    /// а IsValid этого не ловит, потому что проверяет указатель, а не тип.
+    private void CachePlayerGeo(CCSPlayerController player, ulong steamId)
     {
-        // GetPlayerFromSlot оборачивает в CCSPlayerController любую сущность с таким
-        // индексом, не проверяя тип, поэтому валидность проверяем сами.
-        var player = Utilities.GetPlayerFromSlot(slot);
-        if (player is not { IsValid: true }) return;
-
         string ip;
         try
         {
+            _logger.Debug("[JOIN] 4/8 читаю player.IpAddress");
             // IpAddress бросает InvalidOperationException, если сущность уже невалидна
             ip = GeoIpService.ExtractIp(player.IpAddress);
         }
         catch (Exception ex)
         {
-            _logger.Debug($"[GeoIP] Не удалось получить IP для slot {slot}: {ex.Message}");
+            _logger.Debug($"[GeoIP] Не удалось получить IP игрока {steamId}: {ex.Message}");
             return;
         }
 
-        if (string.IsNullOrEmpty(ip)) return;
+        if (string.IsNullOrEmpty(ip))
+        {
+            _logger.Debug("[JOIN] 4/8 IP пуст, гео пропущено");
+            return;
+        }
 
         var defaultLang = Config.DefaultLang ?? string.Empty;
-        _geoIpService.UpdatePlayerCache(id.SteamId64, ip, defaultLang);
+        _geoIpService.UpdatePlayerCache(steamId, ip, defaultLang);
     }
 
     /// Двухбуквенный код языка клиента ("ru", "en") или null.
@@ -106,7 +118,9 @@ public partial class NotifyMessages
     {
         try
         {
-            return player.GetLanguage()?.TwoLetterISOLanguageName;
+            var language = player.GetLanguage()?.TwoLetterISOLanguageName;
+            _logger.Debug($"[JOIN] 5/8 язык клиента: {language ?? "неизвестен"}");
+            return language;
         }
         catch (Exception ex)
         {
@@ -139,33 +153,53 @@ public partial class NotifyMessages
 
     private HookResult EventPlayerConnectFull(EventPlayerConnectFull ev, GameEventInfo info)
     {
+        // Трассировка пути подключения.
+        //
+        // Нарушение памяти в нативном слое убивает процесс без исключения и без стека:
+        // единственное, что остаётся, — последняя успевшая напечататься строка. Поэтому
+        // каждый шаг логируется ПЕРЕД опасной операцией, а не после: последняя строка в логе
+        // называет то, на чём сервер умер. Всё под Debug — включается Settings.json.
+        _logger.Debug("[JOIN] 1/8 ConnectFull: событие получено, проверяю контроллер");
+
         var player = ev.Userid;
         if (player is null || !player.IsValid || player.IsBot)
+        {
+            _logger.Debug("[JOIN] -- пропуск: контроллер null/невалиден/бот");
             return HookResult.Continue;
+        }
+
+        _logger.Debug("[JOIN] 2/8 читаю SteamID и ник с контроллера");
 
         // Снимаем значения ДО таймеров: через 3 секунды контроллер может быть уже невалиден,
         // и обращение к player.SteamID из колбэка роняло плагин.
         var steamId = player.SteamID;
         var playerName = player.PlayerName;
 
-        if (Config.Debug)
-            _logger.Info($"[EVENT] Player connected: {playerName} (SteamID: {steamId})");
+        _logger.Debug($"[JOIN] 3/8 игрок {playerName} (SteamID {steamId}), читаю IP и гео");
 
-        // Язык снимаем здесь: движок уже знает cl_language игрока, а гадать по IP не нужно
+        // Гео и язык снимаем здесь, а не на авторизации Steam: контроллер пришёл из события,
+        // значит сущность существует и её тип верный.
+        CachePlayerGeo(player, steamId);
+
+        _logger.Debug("[JOIN] 5/8 читаю язык клиента (GetLanguage)");
         _sessionService.SetLanguage(steamId, ReadClientLanguage(player));
 
+        _logger.Debug("[JOIN] 6/8 регистрирую сессию");
         _sessionService.AddFullyConnected(steamId);
         _sessionService.TryKillAndRemoveConnectionTimer(steamId);
 
+        _logger.Debug($"[JOIN] 7/8 ставлю таймер анонса входа ({JoinAnnounceDelaySeconds} с)");
+
         _sessionService.SetConnectionTimer(steamId, AddTimer(JoinAnnounceDelaySeconds, () =>
         {
+            _logger.Debug($"[JOIN-TIMER] сработал для {playerName}");
+
             if (Config.JoinMessages != null)
             {
                 _geoIpService.TryGetPlayerIso(steamId, out var country);
                 _geoIpService.TryGetPlayerCity(steamId, out var city);
 
-                if (Config.Debug)
-                    _logger.Info($"[GeoIP] {playerName} location: {city ?? "Unknown"}, {country ?? "Unknown"}");
+                _logger.Debug($"[JOIN-TIMER] гео из кеша: {city ?? "Unknown"}, {country ?? "Unknown"}; рассылаю анонс");
 
                 var values = PlayerValues(playerName, country, city);
 
@@ -178,11 +212,17 @@ public partial class NotifyMessages
             }
 
             _sessionService.RemoveConnectionTimer(steamId);
+            _logger.Debug("[JOIN-TIMER] анонс входа завершён");
         }));
 
         var welcome = Config.WelcomeMessage;
         if (welcome == null || string.IsNullOrEmpty(welcome.Message))
+        {
+            _logger.Debug("[JOIN] 8/8 приветствие не настроено, ConnectFull завершён");
             return HookResult.Continue;
+        }
+
+        _logger.Debug($"[JOIN] 8/8 ставлю таймер приветствия ({welcome.DisplayDelay} с, канал {welcome.MessageType}), ConnectFull завершён");
 
         var template = welcome.Message;
         var welcomeValues = PlayerValues(playerName, null, null);
@@ -192,9 +232,18 @@ public partial class NotifyMessages
         // и краш сервера без единой строки в логе. Ищем игрока заново по SteamID.
         AddTimer(welcome.DisplayDelay, () =>
         {
+            _logger.Debug($"[WELCOME-TIMER] сработал, ищу игрока {steamId}");
+
             var target = FindConnectedPlayer(steamId);
-            if (target != null)
-                _displayService.Print(welcome.MessageType, template, target, welcomeValues);
+            if (target == null)
+            {
+                _logger.Debug("[WELCOME-TIMER] игрок уже вышел, приветствие пропущено");
+                return;
+            }
+
+            _logger.Debug($"[WELCOME-TIMER] показываю приветствие в {welcome.MessageType}");
+            _displayService.Print(welcome.MessageType, template, target, welcomeValues);
+            _logger.Debug("[WELCOME-TIMER] приветствие показано");
         });
 
         return HookResult.Continue;

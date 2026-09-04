@@ -31,8 +31,17 @@ public sealed class GeoIpService : IDisposable
     {
         try
         {
+            // Трассировка: базы MaxMind открываются лениво, ровно на первом игроке, и читаются
+            // через memory-mapped файл. Недокачанная или битая .mmdb убивает процесс без
+            // исключения — по последней напечатанной строке видно, на каком шаге это случилось.
+            _logger.Debug($"[GEO] 1/5 запрос для {steamId}, ip={ip}");
+
             var iso = GetIsoCode(ip, defaultLang);
+            _logger.Debug($"[GEO] 4/5 страна={iso}, запрашиваю город");
+
             var city = GetCity(ip);
+            _logger.Debug($"[GEO] 5/5 город={(string.IsNullOrEmpty(city) ? "неизвестен" : city)}, гео закешировано");
+
             _playerIsoCode[steamId] = iso;
             _playerCity[steamId] = city;
         }
@@ -108,6 +117,7 @@ public sealed class GeoIpService : IDisposable
             if (!IPAddress.TryParse(ip, out var ipAddr))
                 return defaultLang;
 
+            _logger.Debug("[GEO] 3/5 читаю страну из GeoLite2-Country.mmdb");
             var response = _countryDbReader.Country(ipAddr);
             return response.Country.IsoCode ?? defaultLang;
         }
@@ -132,6 +142,7 @@ public sealed class GeoIpService : IDisposable
             if (!IPAddress.TryParse(ip, out var ipAddr))
                 return string.Empty;
 
+            _logger.Debug("[GEO] читаю город из GeoLite2-City.mmdb");
             var response = _cityDbReader.City(ipAddr);
             return response.City?.Name ?? string.Empty;
         }
@@ -148,10 +159,7 @@ public sealed class GeoIpService : IDisposable
         lock (_lock)
         {
             if (_countryDbReader == null)
-            {
-                var path = System.IO.Path.Combine(_moduleDirectory, "GeoLite2-Country.mmdb");
-                _countryDbReader = System.IO.File.Exists(path) ? new DatabaseReader(path) : null;
-            }
+                _countryDbReader = OpenDatabase("GeoLite2-Country.mmdb");
         }
     }
 
@@ -161,11 +169,33 @@ public sealed class GeoIpService : IDisposable
         lock (_lock)
         {
             if (_cityDbReader == null)
-            {
-                var path = System.IO.Path.Combine(_moduleDirectory, "GeoLite2-City.mmdb");
-                _cityDbReader = System.IO.File.Exists(path) ? new DatabaseReader(path) : null;
-            }
+                _cityDbReader = OpenDatabase("GeoLite2-City.mmdb");
         }
+    }
+
+    /// Открывает базу MaxMind, печатая путь и РАЗМЕР файла.
+    ///
+    /// Размер в логе не для красоты: базы качаются на этапе сборки, и недокачанный файл
+    /// выглядит как обычный — до первого чтения. DatabaseReader работает через
+    /// memory-mapped файл, поэтому битая база роняет процесс без исключения.
+    /// Ориентиры: Country ~9 МБ, City ~60 МБ.
+    private DatabaseReader? OpenDatabase(string fileName)
+    {
+        var path = System.IO.Path.Combine(_moduleDirectory, fileName);
+
+        if (!System.IO.File.Exists(path))
+        {
+            _logger.Debug($"[GEO] база {fileName} не найдена ({path}) — гео недоступно");
+            return null;
+        }
+
+        var size = new System.IO.FileInfo(path).Length;
+        _logger.Debug($"[GEO] 2/5 открываю {fileName}, размер {size} байт");
+
+        var reader = new DatabaseReader(path);
+        _logger.Debug($"[GEO] 2/5 {fileName} открыта");
+
+        return reader;
     }
 
     private static bool IsLocalOrPrivate(string ip)

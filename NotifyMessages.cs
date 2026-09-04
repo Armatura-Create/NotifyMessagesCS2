@@ -86,8 +86,8 @@ public partial class NotifyMessages : BasePlugin
 
             foreach (var player in Utilities.GetPlayers())
             {
-                if (player.IsBot || !player.IsValid || player.AuthorizedSteamID == null) continue;
-                OnClientAuthorized(player.Slot, player.AuthorizedSteamID);
+                if (player.IsBot || !player.IsValid) continue;
+                CachePlayerGeo(player, player.SteamID);
             }
         });
     }
