@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Timers;
@@ -39,6 +40,13 @@ public sealed class ServerStatusService
         _logger = logger;
         _addTimer = addTimer;
     }
+
+    /// Логирование из фонового потока маршалим в главный: логгер пишет в консоль,
+    /// которую перехватывает сам CounterStrikeSharp, и звать её из чужого потока —
+    /// лишний риск. Server.NextFrame — штатный способ вернуться в главный поток.
+    private void BgDebug(string message) => Server.NextFrame(() => _logger.Debug(message));
+
+    private void BgError(string message, Exception? ex = null) => Server.NextFrame(() => _logger.Error(message, ex));
 
     private bool Enabled =>
         _config.Servers is { Enabled: true } servers && servers.List.Count > 0;
@@ -170,7 +178,7 @@ public sealed class ServerStatusService
 
                 if (toQuery.Count == 0)
                 {
-                    _logger.Debug($"[ServerStatus] {reason}: cache still fresh, nothing to query");
+                    BgDebug($"[ServerStatus] {reason}: cache still fresh, nothing to query");
                     return;
                 }
 
@@ -187,12 +195,12 @@ public sealed class ServerStatusService
                     }
                 }
 
-                _logger.Debug(
+                BgDebug(
                     $"[ServerStatus] {reason} completed for {toQuery.Count} server(s): {online} online, {offline} offline");
             }
             catch (Exception ex)
             {
-                _logger.Error($"[ServerStatus] {reason} failed", ex);
+                BgError($"[ServerStatus] {reason} failed", ex);
             }
             finally
             {
@@ -212,7 +220,7 @@ public sealed class ServerStatusService
         }
         catch (Exception ex)
         {
-            _logger.Debug($"[ServerStatus] Query failed for {serverInfo.Ip}:{serverInfo.Port} - {ex.Message}");
+            BgDebug($"[ServerStatus] Query failed for {serverInfo.Ip}:{serverInfo.Port} - {ex.Message}");
         }
 
         var (chat, console) = BuildServerLines(serverInfo, info);
@@ -228,7 +236,7 @@ public sealed class ServerStatusService
             };
         }
 
-        _logger.Debug($"[ServerStatus] {serverInfo.Ip}:{serverInfo.Port} - {(info != null ? "ONLINE" : "OFFLINE")}");
+        BgDebug($"[ServerStatus] {serverInfo.Ip}:{serverInfo.Port} - {(info != null ? "ONLINE" : "OFFLINE")}");
     }
 
     internal static (string chat, string console) BuildServerLines(ServerData s, A2SInfoResponse? info)

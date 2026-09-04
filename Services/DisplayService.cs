@@ -17,7 +17,7 @@ public sealed class DisplayService
     // Размер массива слотов. Константа, а НЕ Server.MaxPlayers: сервис создаётся в Load(),
     // где нативы движка ещё недоступны ("Global Variables not initialized yet").
     // CS2 поддерживает до 64 игроков; запас взят с большим излишком, это ~1 КБ ссылок.
-    // От выхода за границы страхует проверка в SetHtmlPrintSettings/ClearUser.
+    // От выхода за границы страхует проверка в SetHtmlPrintSettings и в OnTick.
     private const int MaxSlots = 128;
 
     private Config _config;
@@ -115,7 +115,14 @@ public sealed class DisplayService
         }
     }
 
-    // Вызывается каждый тик для поддержки HTML center
+    /// Вызывается каждый тик для поддержки HTML center.
+    ///
+    /// Обход ТОЛЬКО через Utilities.GetPlayers(): он фильтрует по IsValid и Connected.
+    /// Utilities.GetPlayerFromSlot(slot) для этого не годится — внутри он делает
+    /// new CCSPlayerController(EntitySystem.GetEntityByIndex(slot + 1)) БЕЗ проверки типа,
+    /// то есть для освобождённого или переиспользованного индекса возвращает чужую
+    /// сущность. Чтение PawnIsAlive у неё уходит по неверным смещениям и роняет сервер
+    /// без единой строки в консоли.
     public void OnTick()
     {
         // Ничего не показываем — не трогаем ни игроков, ни нативы.
@@ -127,45 +134,49 @@ public sealed class DisplayService
         var duration = _config.HtmlCenterDuration ?? DefaultHtmlDurationSeconds;
         var showWhenDead = _config.ShowHtmlWhenDead ?? false;
 
-        for (var slot = 0; slot < _users.Length; slot++)
+        var stillActive = 0;
+
+        foreach (var player in Utilities.GetPlayers())
         {
+            if (player.IsBot) continue;
+
+            var slot = player.Slot;
+            if ((uint)slot >= (uint)_users.Length) continue;
+
             var user = _users[slot];
             if (user is not { HtmlPrint: true }) continue;
 
-            var player = Utilities.GetPlayerFromSlot(slot);
-            if (player is not { IsValid: true })
+            if (ShouldStopShowing(user, player.SteamID, user.PrintTime * tickInterval, duration))
             {
-                // Игрок ушёл — гасим слот, иначе счётчик активных никогда не обнулится
-                Deactivate(slot);
-                continue;
-            }
-
-            if (user.PrintTime * tickInterval >= duration)
-            {
-                Deactivate(slot);
+                user.HtmlPrint = false;
                 continue;
             }
 
             if (!showWhenDead && !player.PawnIsAlive)
-                continue; // пауза: таймер не тикает, пока игрок мёртв
+            {
+                stillActive++; // пауза: таймер не тикает, пока игрок мёртв
+                continue;
+            }
 
             player.PrintToCenterHtml(user.Message);
             user.PrintTime++;
+            stillActive++;
         }
+
+        // Счётчик пересчитывается по факту, а не ведётся вручную: слот игрока, который
+        // отвалился по таймауту (без события disconnect), иначе залипал бы навсегда.
+        _htmlActiveCount = stillActive;
     }
+
+    /// Пора ли гасить сообщение: истекло время или слот уже достался другому игроку.
+    internal static bool ShouldStopShowing(User user, ulong currentSteamId, float elapsedSeconds,
+        float durationSeconds)
+        => user.SteamId != currentSteamId || elapsedSeconds >= durationSeconds;
 
     public void ClearUsers()
     {
         for (var i = 0; i < _users.Length; i++) _users[i] = null;
         _htmlActiveCount = 0;
-    }
-
-    /// Сбросить HTML-состояние конкретного слота (вызывается при отключении игрока)
-    public void ClearUser(int slot)
-    {
-        if ((uint)slot >= (uint)_users.Length) return;
-        Deactivate(slot);
-        _users[slot] = null;
     }
 
     private void SendTo(CCSPlayerController player, HudDestination? destination, string processed)
@@ -210,14 +221,6 @@ public sealed class DisplayService
         _ => HudDestination.Center
     };
 
-    private void Deactivate(int slot)
-    {
-        var user = _users[slot];
-        if (user is not { HtmlPrint: true }) return;
-        user.HtmlPrint = false;
-        if (_htmlActiveCount > 0) _htmlActiveCount--;
-    }
-
     private void SetHtmlPrintSettings(CCSPlayerController player, string message)
     {
         var slot = player.Slot;
@@ -238,5 +241,6 @@ public sealed class DisplayService
         user.HtmlPrint = true;
         user.PrintTime = 0;
         user.Message = message;
+        user.SteamId = player.SteamID;
     }
 }

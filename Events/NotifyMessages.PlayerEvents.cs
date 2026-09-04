@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
@@ -17,16 +18,14 @@ public partial class NotifyMessages
         // но почистить сессию и гео-кеш всё равно обязаны
         if (player is null || player.IsBot) return HookResult.Continue;
 
-        // Значения снимаем сразу: GameEvent живёт только внутри обработчика
+        // Значения снимаем сразу: GameEvent живёт только внутри обработчика.
+        // Slot здесь намеренно НЕ читаем: контроллер уже разбирается, а HTML-слот
+        // гасится в OnTick по сверке SteamID — это надёжнее, чем ловить момент отключения.
         var steamId = player.SteamID;
         var playerName = player.PlayerName;
-        var slot = player.Slot;
 
         if (Config.Debug)
             _logger.Info($"[EVENT] Player disconnected: {playerName} (SteamID: {steamId})");
-
-        // HTML-центр этого слота больше не нужен
-        _displayService.ClearUser(slot);
 
         if (_sessionService.TryKillAndRemoveConnectionTimer(steamId))
         {
@@ -63,13 +62,39 @@ public partial class NotifyMessages
 
     private void OnClientAuthorized(int slot, SteamID id)
     {
+        // GetPlayerFromSlot оборачивает в CCSPlayerController любую сущность с таким
+        // индексом, не проверяя тип, поэтому валидность проверяем сами.
         var player = Utilities.GetPlayerFromSlot(slot);
+        if (player is not { IsValid: true }) return;
 
-        var ip = GeoIpService.ExtractIp(player?.IpAddress);
+        string ip;
+        try
+        {
+            // IpAddress бросает InvalidOperationException, если сущность уже невалидна
+            ip = GeoIpService.ExtractIp(player.IpAddress);
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug($"[GeoIP] Не удалось получить IP для slot {slot}: {ex.Message}");
+            return;
+        }
+
         if (string.IsNullOrEmpty(ip)) return;
 
         var defaultLang = Config.DefaultLang ?? string.Empty;
         _geoIpService.UpdatePlayerCache(id.SteamId64, ip, defaultLang);
+    }
+
+    /// Возвращает подключённого игрока по SteamID или null.
+    /// Только через Utilities.GetPlayers() — он фильтрует по IsValid и Connected.
+    private static CCSPlayerController? FindConnectedPlayer(ulong steamId)
+    {
+        foreach (var p in Utilities.GetPlayers())
+        {
+            if (!p.IsBot && p.SteamID == steamId) return p;
+        }
+
+        return null;
     }
 
     private HookResult EventPlayerConnectFull(EventPlayerConnectFull ev, GameEventInfo info)
@@ -122,7 +147,14 @@ public partial class NotifyMessages
         // Раньше учитывались только Chat/Center, а Console и Alert молча становились Center
         var destination = DisplayService.ToHudDestination(welcome.MessageType);
 
-        AddTimer(welcome.DisplayDelay, () => _displayService.Print(destination, msg, player));
+        // Контроллер через таймер НЕ проносим: за DisplayDelay игрок может выйти, объект
+        // будет освобождён, а обращение к нему (даже к IsValid) — это чтение чужой памяти
+        // и краш сервера без единой строки в логе. Ищем игрока заново по SteamID.
+        AddTimer(welcome.DisplayDelay, () =>
+        {
+            var target = FindConnectedPlayer(steamId);
+            if (target != null) _displayService.Print(destination, msg, target);
+        });
 
         return HookResult.Continue;
     }
