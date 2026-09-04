@@ -27,6 +27,9 @@ public sealed class ServerStatusService
     private readonly Dictionary<(string ip, int port), ServerCacheEntry> _serverCache = new();
     private readonly List<Timer> _timers = new();
 
+    // Сколько серверов опрашиваем одновременно
+    private const int MaxConcurrentQueries = 8;
+
     // 0 - свободно, 1 - опрос уже идёт. Не даём спамом команд плодить параллельные проходы.
     private int _queryInFlight;
     private volatile bool _stopped;
@@ -182,8 +185,14 @@ public sealed class ServerStatusService
                     return;
                 }
 
-                // Опрашиваем параллельно — это обычный UDP в фоне, главный поток не задет
-                await Task.WhenAll(toQuery.Select(s => QueryAndStoreAsync(s, timeoutMs))).ConfigureAwait(false);
+                // Опрашиваем параллельно, но пачками: длинный список серверов иначе поднял бы
+                // столько же UDP-сокетов разом. Главный поток при этом не задет в любом случае.
+                for (var i = 0; i < toQuery.Count; i += MaxConcurrentQueries)
+                {
+                    var batch = toQuery.GetRange(i, Math.Min(MaxConcurrentQueries, toQuery.Count - i));
+                    await Task.WhenAll(batch.Select(server => QueryAndStoreAsync(server, timeoutMs)))
+                        .ConfigureAwait(false);
+                }
 
                 int online = 0, offline = 0;
                 lock (_cacheLock)

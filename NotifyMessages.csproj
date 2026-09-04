@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <Platforms>AnyCPU</Platforms>
     <Nullable>enable</Nullable>
+
+    <!-- Анализаторы включены постоянно: именно они поймали форматирование чисел и дат
+         по локали сервера. CA1716 (Error как ключевое слово в других языках) и CA1859
+         (интерфейс вместо конкретного типа) — осознанные решения, глушим точечно. -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <NoWarn>$(NoWarn);CA1716;CA1859</NoWarn>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <RootNamespace>NotifyMessages</RootNamespace>
     <!-- База для локальных сборок. В релизе перекрывается тегом:

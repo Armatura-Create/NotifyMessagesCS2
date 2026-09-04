@@ -21,8 +21,19 @@ public partial class NotifyMessages
         // Значения снимаем сразу: GameEvent живёт только внутри обработчика.
         // Slot здесь намеренно НЕ читаем: контроллер уже разбирается, а HTML-слот
         // гасится в OnTick по сверке SteamID — это надёжнее, чем ловить момент отключения.
-        var steamId = player.SteamID;
-        var playerName = player.PlayerName;
+        // Само чтение полей тоже защищаем: на этом этапе сущность уже может быть невалидна.
+        ulong steamId;
+        string playerName;
+        try
+        {
+            steamId = player.SteamID;
+            playerName = player.PlayerName;
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug($"[EVENT] Не удалось прочитать данные отключившегося игрока: {ex.Message}");
+            return HookResult.Continue;
+        }
 
         if (Config.Debug)
             _logger.Info($"[EVENT] Player disconnected: {playerName} (SteamID: {steamId})");
@@ -50,11 +61,12 @@ public partial class NotifyMessages
 
         _sessionService.RemoveFullyConnected(steamId);
         _geoIpService.RemovePlayer(steamId);
+        _serversCommandCooldown.Remove(steamId); // иначе словарь растёт всё время жизни сервера
 
         return HookResult.Continue;
     }
 
-    private HookResult EventPlayerDisconnectPre(EventPlayerDisconnect ev, GameEventInfo info)
+    private static HookResult EventPlayerDisconnectPre(EventPlayerDisconnect ev, GameEventInfo info)
     {
         info.DontBroadcast = true;
         return HookResult.Continue;

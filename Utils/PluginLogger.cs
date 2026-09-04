@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace NotifyMessages;
 
@@ -14,7 +15,7 @@ public sealed class PluginLogger : ILogger
 
     public void Info(string message)
     {
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         Console.WriteLine($"[{timestamp}] [NotifyMessages] [INFO] {message}");
     }
 
@@ -22,14 +23,14 @@ public sealed class PluginLogger : ILogger
     {
         if (_isDebug())
         {
-            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
             Console.WriteLine($"[{timestamp}] [NotifyMessages] [DEBUG] {message}");
         }
     }
 
     public void Error(string message, Exception? ex = null)
     {
-        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
         if (ex != null)
             Console.WriteLine($"[{timestamp}] [NotifyMessages] [ERROR] {message} => {ex.Message}\nStack trace: {ex.StackTrace}");
         else

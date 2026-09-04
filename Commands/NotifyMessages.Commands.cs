@@ -172,11 +172,20 @@ public partial class NotifyMessages
         {
             if (player is not { IsValid: true, IsBot: false }) continue;
 
-            var ip = GeoIpService.ExtractIp(player.IpAddress);
-            if (string.IsNullOrEmpty(ip)) continue;
+            try
+            {
+                var ip = GeoIpService.ExtractIp(player.IpAddress);
+                if (string.IsNullOrEmpty(ip)) continue;
 
-            var defaultLang = Config.DefaultLang ?? string.Empty;
-            _geoIpService.UpdatePlayerCache(player.SteamID, ip, defaultLang);
+                var defaultLang = Config.DefaultLang ?? string.Empty;
+                _geoIpService.UpdatePlayerCache(player.SteamID, ip, defaultLang);
+            }
+            catch (Exception ex)
+            {
+                // IpAddress бросает InvalidOperationException на невалидной сущности —
+                // один игрок не должен ломать перезагрузку конфига
+                _logger.Debug($"[COMMAND] Пропущен игрок при обновлении гео-кеша: {ex.Message}");
+            }
         }
 
         _serverStatusService.InitialQuery();

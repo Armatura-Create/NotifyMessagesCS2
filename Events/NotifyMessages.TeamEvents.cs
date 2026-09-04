@@ -105,7 +105,7 @@ public partial class NotifyMessages
         }
     }
 
-    private HookResult EventPlayerTeamChangePre(EventPlayerTeam ev, GameEventInfo info)
+    private static HookResult EventPlayerTeamChangePre(EventPlayerTeam ev, GameEventInfo info)
     {
         info.DontBroadcast = true;
         return HookResult.Continue;

@@ -158,7 +158,16 @@ public sealed class DisplayService
                 continue;
             }
 
-            player.PrintToCenterHtml(user.Message);
+            try
+            {
+                player.PrintToCenterHtml(user.Message);
+            }
+            catch (InvalidOperationException)
+            {
+                user.HtmlPrint = false; // сущность уже невалидна — гасим слот, а не спамим тик
+                continue;
+            }
+
             user.PrintTime++;
             stillActive++;
         }
@@ -179,7 +188,22 @@ public sealed class DisplayService
         _htmlActiveCount = 0;
     }
 
+    /// Отправка одному игроку. Все PrintTo* бросают InvalidOperationException, если
+    /// сущность стала невалидной между проверкой и вызовом (игрок вышел в этом же кадре).
+    /// Ловим точечно: пропустить одного получателя дешевле, чем сорвать рассылку или тик.
     private void SendTo(CCSPlayerController player, HudDestination? destination, string processed)
+    {
+        try
+        {
+            SendToCore(player, destination, processed);
+        }
+        catch (InvalidOperationException)
+        {
+            // игрок отвалился прямо сейчас — молча пропускаем
+        }
+    }
+
+    private void SendToCore(CCSPlayerController player, HudDestination? destination, string processed)
     {
         switch (destination)
         {

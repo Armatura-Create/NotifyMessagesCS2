@@ -30,6 +30,10 @@ dotnet test                  # xUnit-тесты чистой логики
 Каталог `tests/**` исключён из компиляции плагина в `.csproj` — он лежит внутри дерева
 проекта, и без `<Compile Remove>` SDK-глоб затянул бы его в саму сборку плагина.
 
+Анализаторы (`EnableNETAnalyzers` + `AnalysisMode=Recommended`) включены постоянно и сборка
+держится на нуле предупреждений — именно они поймали форматирование чисел по локали сервера.
+`CA1716` и `CA1859` заглушены осознанно в `.csproj`.
+
 CI: `.github/workflows/ci.yml` (push/PR) и `release.yml` (тег `v*` → сборка, тесты, zip,
 GitHub Release). Релиз не публикуется на красных тестах.
 
@@ -53,6 +57,10 @@ Release-сборка (таргет `PackageRelease` в `.csproj`) расклад
 | `Events/NotifyMessages.PlayerEvents.cs` | connect/disconnect/authorized |
 | `Events/NotifyMessages.TeamEvents.cs` | смена команды |
 | `Commands/NotifyMessages.Commands.cs` | консольные команды |
+
+`Services/ConfigService.cs` — только логика загрузки и диагностики; значения по умолчанию
+и текст `README.txt` вынесены в `Services/ConfigService.Defaults.cs` (partial, ~630 строк
+данных). Правишь дефолты — иди туда, они применяются лишь при первом запуске.
 
 DI-контейнера нет: сервисы создаются вручную в `Load()` в фиксированном порядке
 (logger → config → geoip → messageProcessor → session → display → serverStatus → advert).
@@ -134,6 +142,16 @@ Config (шаблон с {ключами})
   с арабской/турецкой локалью выдаёт игрокам другие цифры в `{PLAYERS}`, `{SERVER_PORT}` и т.п.
 - **Канал вывода задаётся `MessageType` в конфиге**, маппинг один на всех —
   `DisplayService.ToHudDestination`. Свои switch по `MessageType` не плодить.
+- **Все `PrintTo*` бросают `InvalidOperationException`, если сущность стала невалидной.**
+  Поэтому `DisplayService.SendTo` и перерисовка HTML в `OnTick` обёрнуты точечным catch:
+  пропустить одного получателя дешевле, чем сорвать рассылку или спамить исключением 64 раза
+  в секунду.
+- **Обработчики событий обёрнуты в `SafeEvent`** (`Events/NotifyMessages.Events.cs`).
+  Исключение в нашем хендлере не должно всплывать во фреймворк и мешать другим плагинам.
+  У `OnTick` отдельная обёртка: она гасит HTML-центр вместо того, чтобы логировать каждый тик.
+- **Состояние игрока чистится в `EventPlayerDisconnect` целиком** — сессия, гео-кеш
+  и кулдаун `css_servers`. Любой новый словарь, ключуемый по SteamID, надо добавить туда же,
+  иначе он растёт всё время жизни сервера.
 - **`SessionService` и кеш `ServerStatusService` — под `lock`.** К ним обращаются
   колбэки таймеров и продолжения A2S; блокировки не убирать.
 - `ServerStatusService.GetSnapshot()` отдаёт **копию** значений — наружу голый словарь

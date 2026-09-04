@@ -64,7 +64,7 @@ public static class TextFormatter
 
         foreach (var kv in SortedTags)
         {
-            if (result.IndexOf(kv.Key, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (result.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
                 result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
         }
 
