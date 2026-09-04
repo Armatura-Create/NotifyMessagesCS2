@@ -35,8 +35,6 @@ public sealed partial class ConfigService
                 DisplayDelay = 5
             },
             
-            RestartMessage = "{prefix}{RED}{will_restarted}",
-            UpdateMessage = "{prefix}{RED}{will_updated}",
             ChangeTeamMessage = "{prefix}{changeTeamMessage}",
             JoinTeamMessage = "{prefix}{joinTeamMessage}",
             TitleAnnounceServers = "{prefix}{announce_servers}",
@@ -100,24 +98,6 @@ public sealed partial class ConfigService
                     ["UA"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
                     ["PL"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
                     ["DE"] = "{LIGHTBLUE}Server ➡{DEFAULT} "
-                },
-                
-                // Системные сообщения
-                ["will_restarted"] = new()
-                {
-                    ["RU"] = "Сервер будет перезапущен через {TIME_RESTART}!",
-                    ["US"] = "The server will be restarted in {TIME_RESTART}!",
-                    ["UA"] = "Сервер буде перезапущено через {TIME_RESTART}!",
-                    ["PL"] = "Serwer zostanie ponownie uruchomiony za {TIME_RESTART}!",
-                    ["DE"] = "Der Server wird in {TIME_RESTART} neu gestartet!"
-                },
-                ["will_updated"] = new()
-                {
-                    ["RU"] = "Вышло обновление! Сервер будет перезапущен через {TIME_RESTART}.",
-                    ["US"] = "An update has been released! The server will restart in {TIME_RESTART}.",
-                    ["UA"] = "Вийшло оновлення! Сервер буде перезапущено через {TIME_RESTART}.",
-                    ["PL"] = "Wydano aktualizację! Serwer zostanie ponownie uruchomiony za {TIME_RESTART}.",
-                    ["DE"] = "Ein Update wurde veröffentlicht! Der Server wird in {TIME_RESTART} neu gestartet."
                 },
                 
                 // Команды и игроки

@@ -41,7 +41,7 @@ internal static class TemplateDiagnostics
             ["{PLAYERNAME}"] = "WelcomeMessage, ChangeTeamMessage, JoinTeamMessage, Join/LeaveMessages",
             ["{TEAM}"] = "ChangeTeamMessage, JoinTeamMessage",
             ["{OLD_TEAM}"] = "ChangeTeamMessage",
-            ["{TIME_RESTART}"] = "RestartMessage, UpdateMessage, RestartNotify",
+            ["{TIME_RESTART}"] = "RestartNotify",
             ["{SECONDS}"] = "RestartNotify",
             ["{COUNTRY}"] = "JoinMessages, LeaveMessages",
             ["{CITY}"] = "JoinMessages, LeaveMessages",

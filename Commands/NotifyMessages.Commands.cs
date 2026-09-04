@@ -67,48 +67,6 @@ public partial class NotifyMessages
         _serverStatusService.TriggerBackgroundUpdate();
     }
 
-    [CommandHelper(minArgs: 1, usage: "<seconds>", whoCanExecute: CommandUsage.SERVER_ONLY)]
-    [ConsoleCommand("css_announce_restart", "Сказать всем, что будет рестарт через N секунд")]
-    public void AnnounceRestart(CCSPlayerController? controller, CommandInfo command)
-    {
-        AnnounceTimed(controller, command, Config.RestartMessage, "css_announce_restart");
-    }
-
-    [CommandHelper(minArgs: 1, usage: "<seconds>", whoCanExecute: CommandUsage.SERVER_ONLY)]
-    [ConsoleCommand("css_announce_update", "Сказать всем, что будет обновление через N секунд")]
-    public void AnnounceUpdate(CCSPlayerController? controller, CommandInfo command)
-    {
-        AnnounceTimed(controller, command, Config.UpdateMessage, "css_announce_update");
-    }
-
-    private void AnnounceTimed(CCSPlayerController? controller, CommandInfo command, string? template,
-        string commandName)
-    {
-        if (!int.TryParse(command.GetArg(1), out var seconds) || seconds <= 0 || seconds > 3600)
-        {
-            var usage = $"[ERROR] Use: {commandName} <seconds> (1-3600)";
-            if (controller != null) controller.PrintToChat(usage);
-            else _logger.Info(usage);
-            return;
-        }
-
-        if (string.IsNullOrEmpty(template))
-        {
-            _logger.Info($"[COMMAND] {commandName}: message template is not configured in Settings.json");
-            return;
-        }
-
-        var formattedTime = TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss", CultureInfo.InvariantCulture);
-
-        // Значение отдаём в Print: подстановка обязана произойти до рендера, иначе теги
-        // внутри подставленного текста останутся текстом.
-        _displayService.Print(MessageType.Chat, template, null,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["{TIME_RESTART}"] = formattedTime
-            });
-    }
-
     /// Оповестить игроков о предстоящем рестарте/обновлении.
     ///
     /// Точка интеграции с внешним апдейтером: тот шлёт в консоль сервера

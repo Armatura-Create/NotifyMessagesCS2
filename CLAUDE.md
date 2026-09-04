@@ -271,8 +271,6 @@ Enum'ы читаются и пишутся строками (`JsonStringEnumConv
 | Команда | Права | Действие |
 |---|---|---|
 | `css_servers` | CLIENT_ONLY | список серверов из кеша + фоновое обновление, кулдаун 10 с на игрока |
-| `css_announce_restart <sec>` | SERVER_ONLY | анонс рестарта, 1–3600 |
-| `css_announce_update <sec>` | SERVER_ONLY | анонс обновления, 1–3600 |
 | `css_restart_notify <sec>` | SERVER_ONLY | точка интеграции с внешним апдейтером, 0–86400 |
 | `css_reload_advert` | `@css/root` | перезагрузка всех четырёх конфигов |
 | `css_nm_check` | `@css/root` | прогон всех шаблонов через `TemplateDiagnostics` |
@@ -282,6 +280,10 @@ Enum'ы читаются и пишутся строками (`JsonStringEnumConv
 секундой, а не интервалом рекламы. Предпросмотр обязан идти через `DisplayService.Print` —
 любой обходной путь ничего не доказывает. Предпросмотр рекламы ходит по `ad.Messages` напрямую,
 а НЕ через `ad.NextMessages`: тот сдвигает боевую ротацию.
+
+Анонс рестарта и обновления — только `css_restart_notify`. Команды `css_announce_restart`
+и `css_announce_update` вместе с полями `RestartMessage`/`UpdateMessage` удалены в v2.2.2:
+они умели строго меньше (один текст, всегда в чат) и дублировали `RestartNotify`.
 
 `css_restart_notify` существует, чтобы внешний сервис обновления слал её вместо голого `say`:
 текст и цвет берутся из `Settings.RestartNotify` + `Messages.json`, поэтому каждый игрок видит

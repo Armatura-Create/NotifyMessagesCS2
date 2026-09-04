@@ -70,8 +70,6 @@ public sealed partial class ConfigService
                 "DisplayDelay": { "type": "number", "description": "Задержка перед показом, секунды.", "minimum": 0 }
               }
             },
-            "RestartMessage": { "type": "string", "description": "Шаблон для css_announce_restart. Доступен тег {TIME_RESTART}." },
-            "UpdateMessage": { "type": "string", "description": "Шаблон для css_announce_update. Доступен тег {TIME_RESTART}." },
             "ChangeTeamMessage": { "type": "string", "description": "Смена команды. Доступны {PLAYERNAME}, {TEAM}, {OLD_TEAM}." },
             "JoinTeamMessage": { "type": "string", "description": "Вход в команду. Доступны {PLAYERNAME}, {TEAM}." },
             "TitleAnnounceServers": { "type": "string", "description": "Заголовок списка серверов для команды !servers." },

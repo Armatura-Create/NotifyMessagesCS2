@@ -15,8 +15,6 @@ public class Config
     public bool? ShowHtmlWhenDead { get; set; }
     public float? HtmlCenterDuration { get; init; }
     public WelcomeMessage? WelcomeMessage { get; init; }
-    public string? RestartMessage { get; set; }
-    public string? UpdateMessage { get; set; }
     public string? ChangeTeamMessage { get; set; }
     public string? JoinTeamMessage { get; set; }
     public string? TitleAnnounceServers { get; set; }
@@ -45,8 +43,6 @@ public class SettingsConfig
     public bool? ShowHtmlWhenDead { get; set; }
     public float? HtmlCenterDuration { get; set; }
     public WelcomeMessage? WelcomeMessage { get; set; }
-    public string? RestartMessage { get; set; }
-    public string? UpdateMessage { get; set; }
     public string? ChangeTeamMessage { get; set; }
     public string? JoinTeamMessage { get; set; }
     public string? TitleAnnounceServers { get; set; }

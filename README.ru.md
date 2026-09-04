@@ -110,8 +110,6 @@ css_reload_advert         // применить все четыре файла
     "DisplayDelay": 5
   },
   
-  "RestartMessage": "{prefix}{RED}{will_restarted}",
-  "UpdateMessage": "{prefix}{RED}{will_updated}",
   "ChangeTeamMessage": "{prefix}{changeTeamMessage}",
   "JoinTeamMessage": "{prefix}{joinTeamMessage}",
   "TitleAnnounceServers": "{prefix}{announce_servers}",
@@ -139,8 +137,6 @@ css_reload_advert         // применить все четыре файла
 | `ShowHtmlWhenDead` | bool? | Показывать HTML мёртвым игрокам |
 | `HtmlCenterDuration` | float? | Длительность показа HTML в секундах |
 | `WelcomeMessage` | object | Приветственное сообщение при подключении |
-| `RestartMessage` | string | Шаблон сообщения о рестарте (использует ключи из Messages.json) |
-| `UpdateMessage` | string | Шаблон сообщения об обновлении |
 | `ChangeTeamMessage` | string | Шаблон при смене команды |
 | `JoinTeamMessage` | string | Шаблон при входе в команду |
 | `TitleAnnounceServers` | string | Заголовок для команды !servers |
@@ -237,7 +233,6 @@ css_reload_advert         // применить все четыре файла
 - `welcome_player` — приветствие игрока
 - `welcome_text` — текст приветствия
 - `reklama_1`, `reklama_2`, ... — тексты рекламы
-- `will_restarted`, `will_updated` — системные сообщения
 - `changeTeamMessage`, `joinTeamMessage` — сообщения о командах
 - `player`, `connected`, `disconnected` — статусы игроков
 - `announce_servers` — заголовок списка серверов
@@ -458,20 +453,14 @@ css_reload_advert         // применить все четыре файла
 
 | Команда | Права | Описание |
 |---------|-------|----------|
-| `css_announce_restart <сек>` | SERVER_ONLY | Объявить рестарт через N секунд (1-3600) |
-| `css_announce_update <сек>` | SERVER_ONLY | Объявить обновление через N секунд (1-3600) |
 | `css_restart_notify <сек>` | SERVER_ONLY | Оповестить о рестарте через N секунд (0-86400) |
 | `css_reload_advert` | @css/root | Перезагрузить все 4 конфигурации без перезапуска |
 | `css_nm_check` | @css/root | Проверить все шаблоны: неизвестные теги, дыры в переводах |
 | `css_nm_preview <цель>` | @css/root | Показать шаблон себе прямо сейчас: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` |
 
-**Важно:** Команды `css_announce_restart` и `css_announce_update` имеют ограничение **от 1 до 3600 секунд** (1 час) для безопасности.
-
 #### Примеры:
 
 ```
-css_announce_restart 300     // Рестарт через 5 минут
-css_announce_update 60       // Обновление через 1 минуту
 css_restart_notify 300       // Оповещение из RestartNotify для отсечки 300 сек
 css_reload_advert            // Перезагрузить все конфиги
 ```

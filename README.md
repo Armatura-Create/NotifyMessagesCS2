@@ -106,8 +106,6 @@ your edits are safe. Trailing commas and `//` comments are accepted on purpose.
 | `ShowHtmlWhenDead` | bool? | Show HTML to dead players |
 | `HtmlCenterDuration` | float? | HTML display duration in seconds (default 5) |
 | `WelcomeMessage` | object | Message shown on connect |
-| `RestartMessage` | string | Restart announcement template |
-| `UpdateMessage` | string | Update announcement template |
 | `ChangeTeamMessage` | string | Team change template |
 | `JoinTeamMessage` | string | Team join template |
 | `TitleAnnounceServers` | string | Header for the `css_servers` command |
@@ -195,7 +193,7 @@ The "nearest" threshold is deliberately not used — saying "in 5 seconds" when 
 ```
 
 `LanguageMessages` holds every translatable string: `prefix`, `welcome_player`, `welcome_text`,
-`reklama_1`…, `will_restarted`, `will_updated`, `changeTeamMessage`, `joinTeamMessage`,
+`reklama_1`…, `changeTeamMessage`, `joinTeamMessage`,
 `player`, `connected`, `disconnected`, `announce_servers`, and the `restart_*` keys used by
 `RestartNotify`. See the generated file after first run for the full list.
 
@@ -327,8 +325,6 @@ After the list is shown, a background cache refresh is started so the next reque
 
 | Command | Permission | Description |
 |---------|------------|-------------|
-| `css_announce_restart <sec>` | SERVER_ONLY | Announce a restart in N seconds (1–3600) |
-| `css_announce_update <sec>` | SERVER_ONLY | Announce an update in N seconds (1–3600) |
 | `css_restart_notify <sec>` | SERVER_ONLY | Send the `RestartNotify` message for that mark (0–86400) |
 | `css_reload_advert` | @css/root | Reload all four config files without a restart |
 | `css_nm_check` | @css/root | Check every template: unknown tags, missing translations |
@@ -337,8 +333,6 @@ After the list is shown, a background cache refresh is started so the next reque
 #### Examples:
 
 ```
-css_announce_restart 300     // Restart in 5 minutes
-css_announce_update 60       // Update in 1 minute
 css_restart_notify 300       // RestartNotify message for the 300 s mark
 css_reload_advert            // Reload every config file
 ```

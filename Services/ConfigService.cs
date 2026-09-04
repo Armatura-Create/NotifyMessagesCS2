@@ -183,8 +183,6 @@ public sealed partial class ConfigService
             ShowHtmlWhenDead = settings?.ShowHtmlWhenDead,
             HtmlCenterDuration = settings?.HtmlCenterDuration,
             WelcomeMessage = settings?.WelcomeMessage,
-            RestartMessage = settings?.RestartMessage,
-            UpdateMessage = settings?.UpdateMessage,
             ChangeTeamMessage = settings?.ChangeTeamMessage,
             JoinTeamMessage = settings?.JoinTeamMessage,
             TitleAnnounceServers = settings?.TitleAnnounceServers,

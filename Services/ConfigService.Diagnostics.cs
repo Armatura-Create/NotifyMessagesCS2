@@ -36,8 +36,6 @@ public sealed partial class ConfigService
 
         // --- Settings.json ---
         Check(config.WelcomeMessage?.Message, "Settings.json → WelcomeMessage", PlayerNameOnly);
-        Check(config.RestartMessage, "Settings.json → RestartMessage", RestartTags);
-        Check(config.UpdateMessage, "Settings.json → UpdateMessage", RestartTags);
         Check(config.ChangeTeamMessage, "Settings.json → ChangeTeamMessage", ChangeTeamTags);
         Check(config.JoinTeamMessage, "Settings.json → JoinTeamMessage", JoinTeamTags);
         Check(config.TitleAnnounceServers, "Settings.json → TitleAnnounceServers");

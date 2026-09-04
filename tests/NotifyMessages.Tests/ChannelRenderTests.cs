@@ -106,3 +106,119 @@ public class ChannelRenderTests
             MessageProcessor.ApplyValues("{PLAYERNAME}", values, MessageType.Chat));
     }
 }
+
+/// Движок CS2 не применяет цвет, стоящий в самом начале сообщения.
+public class ChatColorPrefixTests
+{
+    private static readonly string Default = CounterStrikeSharp.API.Modules.Utils.ChatColors.Default.ToString();
+    private static readonly string LightBlue = CounterStrikeSharp.API.Modules.Utils.ChatColors.LightBlue.ToString();
+
+    [Fact]
+    public void MessageStartingWithColor_GetsPrefixAndSpace()
+    {
+        // Регрессия: раньше здесь стоял ранний выход и такой шаблон выводился белым
+        var result = TextFormatter.EnsureChatColorPrefix(LightBlue + "Server");
+
+        Assert.Equal(Default + " " + LightBlue + "Server", result);
+    }
+
+    [Fact]
+    public void LeadingSpaceInTemplate_IsNotDoubled()
+    {
+        var result = TextFormatter.EnsureChatColorPrefix(" " + LightBlue + "Server");
+
+        Assert.Equal(Default + " " + LightBlue + "Server", result);
+    }
+
+    [Fact]
+    public void SecondCall_ChangesNothing()
+    {
+        var once = TextFormatter.EnsureChatColorPrefix(LightBlue + "Server");
+
+        Assert.Equal(once, TextFormatter.EnsureChatColorPrefix(once));
+    }
+
+    [Fact]
+    public void ColorInTheMiddle_IsAlsoProtected()
+    {
+        // Первый код всё равно окажется первым в строке — значит и его надо прикрыть
+        var result = TextFormatter.EnsureChatColorPrefix("Привет " + LightBlue + "мир");
+
+        Assert.StartsWith(Default + " ", result, System.StringComparison.Ordinal);
+        Assert.Contains(LightBlue + "мир", result, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlainText_IsLeftAlone()
+    {
+        // Обычному сообщению ведущий пробел ни к чему
+        Assert.Equal("Просто текст", TextFormatter.EnsureChatColorPrefix("Просто текст"));
+    }
+}
+
+/// Сквозная проверка: шаблон из конфига -> ProcessMessage -> строка, уходящая в PrintToChat.
+/// Нативов здесь нет: ReplaceMessageTags трогает движок только если в строке есть {MAP},
+/// {PLAYERS} и подобные, а их в этих шаблонах нет.
+public class ColorPipelineTests
+{
+    private static MessageProcessor Processor() => new(
+        ConfigService.BuildDefaultConfig(),
+        _ => "RU");
+
+    private static bool HasControlCodes(string text)
+    {
+        foreach (var c in text)
+            if (c >= '\x01' && c <= '\x10') return true;
+        return false;
+    }
+
+    [Fact]
+    public void DefaultPrefix_ReachesChatColored()
+    {
+        // {prefix} в дефолтном конфиге начинается с {LIGHTBLUE} — именно этот случай выводился белым
+        var processed = Processor().ProcessMessage("{prefix}Текст", 0, MessageType.Chat);
+        var forChat = TextFormatter.EnsureChatColorPrefix(processed);
+
+        Assert.True(HasControlCodes(processed));
+        Assert.DoesNotContain("{", forChat, System.StringComparison.Ordinal);
+        Assert.StartsWith(
+            CounterStrikeSharp.API.Modules.Utils.ChatColors.Default + " " +
+            CounterStrikeSharp.API.Modules.Utils.ChatColors.LightBlue,
+            forChat, System.StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryKnownColorTag_IsReplacedInEveryChannel()
+    {
+        var processor = Processor();
+
+        foreach (var tag in TextFormatter.KnownColorTags)
+        {
+            foreach (var channel in new[]
+                     {
+                         MessageType.Chat, MessageType.Center, MessageType.CenterHtml,
+                         MessageType.Console, MessageType.Alert
+                     })
+            {
+                var result = processor.ProcessMessage(tag + "X", 0, channel);
+
+                // Ни один известный тег не имеет права доехать до игрока фигурными скобками
+                Assert.DoesNotContain(tag, result, System.StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void UnknownColorTag_StaysVisibleAndIsReportedByCheck()
+    {
+        // Опечатка вроде {LIGHTPBLUE} остаётся текстом — и это ловит css_nm_check
+        const string typo = "{LIGHTPBLUE}";
+        var config = ConfigService.BuildDefaultConfig();
+
+        Assert.Contains(typo, new MessageProcessor(config, _ => "RU")
+            .ProcessMessage(typo + "X", 0, MessageType.Chat), System.StringComparison.Ordinal);
+
+        var issues = TemplateDiagnostics.Analyze(typo, config, "test");
+        Assert.Contains(issues, i => i.Severity == TemplateSeverity.Error && i.Tag == typo);
+    }
+}
