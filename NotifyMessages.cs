@@ -54,6 +54,7 @@ public partial class NotifyMessages : BasePlugin
     private GeoIpService _geoIpService = null!;
     private MessageProcessor _messageProcessor = null!;
     private ServerStatusService _serverStatusService = null!;
+    private LanguageIndex _languageIndex = null!;
     private AdvertisementService _advertisementService = null!;
 
     public override void Load(bool hotReload)
@@ -62,9 +63,9 @@ public partial class NotifyMessages : BasePlugin
         _configService = new ConfigService(_logger);
         Config = LoadConfigSafely();
         _geoIpService = new GeoIpService(ModuleDirectory, _logger);
-        _messageProcessor = new MessageProcessor(Config,
-            steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
         _sessionService = new SessionService();
+        _languageIndex = LanguageIndex.Build(Config);
+        _messageProcessor = new MessageProcessor(Config, ResolveLanguage);
         _displayService = new DisplayService(Config, _messageProcessor, _logger);
         _serverStatusService = CreateServerStatusService();
         _advertisementService = CreateAdvertisementService();
@@ -90,6 +91,13 @@ public partial class NotifyMessages : BasePlugin
             }
         });
     }
+
+    /// Язык игрока: сначала выбор самого игрока (cl_language), потом география, потом дефолт.
+    /// Гео остаётся источником {COUNTRY}/{CITY} — там оно и уместно.
+    private string? ResolveLanguage(ulong steamId) => _languageIndex.Resolve(
+        _sessionService.GetLanguage(steamId),
+        _geoIpService.GetIsoForSteamId(steamId),
+        Config.DefaultLang);
 
     /// Загрузка конфигурации, которая не роняет плагин.
     /// Пустой Config безопасен: все подсистемы проверяют свои секции на null и просто молчат.
@@ -131,7 +139,8 @@ public partial class NotifyMessages : BasePlugin
         Config,
         _logger,
         (interval, action, flags) => AddTimer(interval, action, flags),
-        _displayService.Print);
+        // Лямбда, а не метод-группа: у Print есть необязательный параметр values
+        (channel, message, target) => _displayService.Print(channel, message, target));
 
     private void OnTick()
     {

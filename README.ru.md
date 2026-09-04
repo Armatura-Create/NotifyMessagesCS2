@@ -58,12 +58,25 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 ├── Messages.json    # Все переводы и текстовые сообщения
 ├── Ads.json         # Рекламные объявления
 ├── Servers.json     # Список серверов для мониторинга
-└── README.txt       # Подробная документация по конфигам
+├── *.schema.json    # JSON Schema для каждого файла
+└── README.txt       # Короткая шпаргалка
 ```
 
-**При первом запуске** плагин автоматически создаёт все 4 файла с детальными примерами + `README.txt` с полной документацией!
+**При первом запуске** плагин создаёт все 4 файла с примерами. Файлы `*.schema.json` и `README.txt`
+перезаписываются при **каждой** загрузке — они не могут описывать версию старше той, что стоит.
 
-После редактирования используйте команду `css_reload_advert` для применения изменений без перезапуска сервера.
+**Откройте конфиг в редакторе с поддержкой JSON Schema** (VS Code и большинство других): он будет
+подсказывать имена полей, допустимые значения и подсвечивать опечатки прямо во время правки.
+Это заменяет бо́льшую часть документации ниже — и, в отличие от неё, не устаревает молча.
+
+После правки не нужно ничего ждать:
+
+```
+css_nm_check              // неизвестные теги и дыры в переводах — с файлом и ключом
+css_nm_preview welcome    // показать приветствие себе прямо сейчас
+css_nm_preview ad 1       // показать первый блок рекламы
+css_reload_advert         // применить все четыре файла
+```
 
 **Битый конфиг не роняет плагин.** Если файл не разобрался, в лог пишется имя файла, строка
 и позиция ошибки, для этого файла берутся значения по умолчанию, а остальные три читаются
@@ -92,7 +105,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
   "HtmlCenterDuration": null,
   
   "WelcomeMessage": {
-    "MessageType": 0,
+    "MessageType": "Chat",
     "Message": "{prefix}{welcome_player} {RED}{PLAYERNAME} {DEFAULT}{welcome_text}",
     "DisplayDelay": 5
   },
@@ -122,7 +135,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 |----------|-----|----------|
 | `Debug` | bool | Включить подробное логирование (true/false) |
 | `DefaultLang` | string | Язык по умолчанию (RU/US/UA/PL/DE) |
-| `PrintToCenterHtml` | bool? | Использовать HTML для центральных сообщений |
+| `PrintToCenterHtml` | bool? | **Устарело.** Поднимает весь `Center` до `CenterHtml`. Указывайте `"MessageType": "CenterHtml"` там, где нужна разметка |
 | `ShowHtmlWhenDead` | bool? | Показывать HTML мёртвым игрокам |
 | `HtmlCenterDuration` | float? | Длительность показа HTML в секундах |
 | `WelcomeMessage` | object | Приветственное сообщение при подключении |
@@ -132,6 +145,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 | `JoinTeamMessage` | string | Шаблон при входе в команду |
 | `TitleAnnounceServers` | string | Заголовок для команды !servers |
 | `RestartNotify` | object | Оповещение о рестарте/обновлении (см. ниже) |
+| `LanguageAliases` | object | Блок переводов → коды языков и стран, которые на него отображаются |
 | `MapsName` | object | Красивые названия карт (технич. название → отображаемое) |
 
 **💡 Важно:** В сообщениях используются ключи типа `{prefix}`, `{welcome_player}` и т.д. — все переводы находятся в **Messages.json**!
@@ -140,11 +154,23 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 
 ```json
 {
-  "MessageType": 0,      // 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert
+  "MessageType": "Chat", // Chat | Center | CenterHtml | Console | Alert
   "Message": "...",      // Шаблон с ключами из Messages.json
   "DisplayDelay": 5      // Задержка показа в секундах
 }
 ```
+
+**Каналы не взаимозаменяемы — у них разные грамматики:**
+
+| Канал | Цвета | Перенос строки |
+|-------|-------|----------------|
+| `Chat` | да, теги `{RED}` и прочие | `\n` |
+| `Center` | нет — движок рисует обычный текст, теги будут убраны | `\n` |
+| `CenterHtml` | да, разметкой; плюс размеры `{BIG}` / `{MEDIUM}` / `{SMALL}` | `\n` |
+| `Console` | нет | `\n` |
+| `Alert` | нет | `\n` |
+
+Старые числовые значения (`0`–`4`) по-прежнему читаются — существующие конфиги не ломаются.
 
 #### RestartNotify — оповещение о рестарте:
 
@@ -153,7 +179,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 ```json
 "RestartNotify": {
   "Enabled": true,
-  "MessageType": 0,
+  "MessageType": "Chat",
   "DefaultMessage": "{prefix}{RED}{restart_in_seconds}",
   "Thresholds": {
     "300": "{prefix}{RED}{update_available} {DEFAULT}{restart_in_5min}",
@@ -168,7 +194,7 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 | Параметр | Тип | Описание |
 |----------|-----|----------|
 | `Enabled` | bool | Включить обработку `css_restart_notify` |
-| `MessageType` | int | Канал вывода: 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert |
+| `MessageType` | string | Канал вывода: `Chat`, `Center`, `CenterHtml`, `Console`, `Alert` |
 | `DefaultMessage` | string | Шаблон для секунд, которых нет в `Thresholds` |
 | `Thresholds` | object | Точные отсечки: `"секунды"` → шаблон |
 
@@ -436,6 +462,8 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 | `css_announce_update <сек>` | SERVER_ONLY | Объявить обновление через N секунд (1-3600) |
 | `css_restart_notify <сек>` | SERVER_ONLY | Оповестить о рестарте через N секунд (0-86400) |
 | `css_reload_advert` | @css/root | Перезагрузить все 4 конфигурации без перезапуска |
+| `css_nm_check` | @css/root | Проверить все шаблоны: неизвестные теги, дыры в переводах |
+| `css_nm_preview <цель>` | @css/root | Показать шаблон себе прямо сейчас: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` |
 
 **Важно:** Команды `css_announce_restart` и `css_announce_update` имеют ограничение **от 1 до 3600 секунд** (1 час) для безопасности.
 
@@ -607,10 +635,25 @@ dotnet build -c Release -p:GeoLiteLicenseKey=ВАШ_КЛЮЧ
 
 ### Локализация
 
-- Плагин автоматически определяет страну игрока по IP через GeoIP2
-- Поддерживаются языки: RU, US, UA, PL, DE
-- Можно легко добавить новые языки в `LanguageMessages`
-- Если язык игрока не найден, используется `DefaultLang`
+Порядок определения: **язык клиента игрока** (`cl_language` — движок его уже знает) →
+**страна по IP** (MaxMind GeoLite2) → `DefaultLang`. Регистр не важен: клиент отдаёт `ru`,
+а блок в конфиге называется `RU` — совпадёт.
+
+Ответ движка идёт первым, потому что это выбор самого игрока, а IP — догадка о географии,
+а не о языке.
+
+`LanguageAliases` отображает дополнительные коды на существующий блок, чтобы один набор
+переводов обслуживал несколько стран и языков:
+
+```json
+"LanguageAliases": {
+  "RU": ["ru", "kk", "be", "KZ", "BY", "MD"],
+  "US": ["en", "GB", "CA", "AU"]
+}
+```
+
+Без этого игрок из Казахстана получал `DefaultLang`: блока `KZ` нет, а дублировать все переводы
+под каждую страну бессмысленно. GeoIP остаётся источником `{COUNTRY}` и `{CITY}` — там он и уместен.
 
 ### Особенности работы
 

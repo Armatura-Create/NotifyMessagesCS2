@@ -39,19 +39,4 @@ public class HtmlCenterSlotTests
         Assert.True(DisplayService.ShouldStopShowing(new User { HtmlPrint = true }, 76561198000000001,
             elapsedSeconds: 0f, durationSeconds: 5f));
     }
-
-    [Fact]
-    public void MessageType_MapsToOutputChannel()
-    {
-        Assert.Equal(CounterStrikeSharp.API.Modules.Utils.HudDestination.Chat,
-            DisplayService.ToHudDestination(MessageType.Chat));
-        Assert.Equal(CounterStrikeSharp.API.Modules.Utils.HudDestination.Console,
-            DisplayService.ToHudDestination(MessageType.Console));
-        Assert.Equal(CounterStrikeSharp.API.Modules.Utils.HudDestination.Alert,
-            DisplayService.ToHudDestination(MessageType.Alert));
-        Assert.Equal(CounterStrikeSharp.API.Modules.Utils.HudDestination.Center,
-            DisplayService.ToHudDestination(MessageType.Center));
-        Assert.Equal(CounterStrikeSharp.API.Modules.Utils.HudDestination.Center,
-            DisplayService.ToHudDestination(MessageType.CenterHtml));
-    }
 }

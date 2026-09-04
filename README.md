@@ -61,13 +61,26 @@ csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
 ├── Messages.json    # All translations and message texts
 ├── Ads.json         # Advertisements
 ├── Servers.json     # Servers to monitor
-└── README.txt       # Detailed config documentation
+├── *.schema.json    # JSON Schema for each file
+└── README.txt       # Short cheat sheet
 ```
 
-**On first run** the plugin creates all four files with detailed examples, plus a `README.txt`
-with full documentation.
+**On first run** the plugin creates all four files with examples. The `*.schema.json` files and
+`README.txt` are rewritten on **every** load, so they never describe an older version than the
+plugin you are running.
 
-After editing, run `css_reload_advert` to apply changes without restarting the server.
+**Open a config in an editor that understands JSON Schema** (VS Code and most others): it will
+autocomplete field names, offer the allowed values and highlight typos while you type. That
+replaces most of the documentation below — and, unlike documentation, it cannot silently go stale.
+
+After editing, check and preview without waiting for anything:
+
+```
+css_nm_check              // unknown tags, gaps in translations — with file and key
+css_nm_preview welcome    // show the welcome message to yourself, right now
+css_nm_preview ad 1       // show the first advertisement block
+css_reload_advert         // apply all four files
+```
 
 **A broken config will not take the plugin down.** If a file fails to parse, the plugin logs the
 file name, line and position of the error, falls back to defaults *for that file only*, and keeps
@@ -89,7 +102,7 @@ your edits are safe. Trailing commas and `//` comments are accepted on purpose.
 |-----------|------|-------------|
 | `Debug` | bool | Verbose logging. **Off by default** — it logs SteamIDs, names and geo data |
 | `DefaultLang` | string | Fallback language (RU/US/UA/PL/DE) |
-| `PrintToCenterHtml` | bool? | Use HTML for center messages |
+| `PrintToCenterHtml` | bool? | **Deprecated.** Promotes every `Center` message to `CenterHtml`. Set `"MessageType": "CenterHtml"` where you need markup instead |
 | `ShowHtmlWhenDead` | bool? | Show HTML to dead players |
 | `HtmlCenterDuration` | float? | HTML display duration in seconds (default 5) |
 | `WelcomeMessage` | object | Message shown on connect |
@@ -99,6 +112,7 @@ your edits are safe. Trailing commas and `//` comments are accepted on purpose.
 | `JoinTeamMessage` | string | Team join template |
 | `TitleAnnounceServers` | string | Header for the `css_servers` command |
 | `RestartNotify` | object | Restart/update notification (see below) |
+| `LanguageAliases` | object | Message block → language and country codes that map to it |
 | `MapsName` | object | Pretty map names (technical name → display name) |
 
 **💡 Important:** message templates use keys like `{prefix}` and `{welcome_player}` — all
@@ -108,11 +122,23 @@ translations live in **Messages.json**.
 
 ```json
 {
-  "MessageType": 0,      // 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert
+  "MessageType": "Chat", // Chat | Center | CenterHtml | Console | Alert
   "Message": "...",      // Template with keys from Messages.json
   "DisplayDelay": 5      // Delay before showing, in seconds
 }
 ```
+
+**Channels are not interchangeable — they have different grammars:**
+
+| Channel | Colors | Line breaks |
+|---------|--------|-------------|
+| `Chat` | yes, via `{RED}` and friends | `\n` |
+| `Center` | no — the engine renders plain text, so tags are stripped | `\n` |
+| `CenterHtml` | yes, rendered as markup; plus `{BIG}` / `{MEDIUM}` / `{SMALL}` | `\n` |
+| `Console` | no | `\n` |
+| `Alert` | no | `\n` |
+
+Old numeric values (`0`–`4`) are still read, so existing configs keep working.
 
 #### RestartNotify — restart notification:
 
@@ -121,7 +147,7 @@ The integration point for an external updater (see [Updater integration](#-updat
 ```json
 "RestartNotify": {
   "Enabled": true,
-  "MessageType": 0,
+  "MessageType": "Chat",
   "DefaultMessage": "{prefix}{RED}{restart_in_seconds}",
   "Thresholds": {
     "300": "{prefix}{RED}{update_available} {DEFAULT}{restart_in_5min}",
@@ -136,7 +162,7 @@ The integration point for an external updater (see [Updater integration](#-updat
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `Enabled` | bool | Enable handling of `css_restart_notify` |
-| `MessageType` | int | Output channel: 0=Chat, 1=Center, 2=CenterHtml, 3=Console, 4=Alert |
+| `MessageType` | string | Output channel: `Chat`, `Center`, `CenterHtml`, `Console`, `Alert` |
 | `DefaultMessage` | string | Template for values not listed in `Thresholds` |
 | `Thresholds` | object | Exact marks: `"seconds"` → template |
 
@@ -305,6 +331,8 @@ After the list is shown, a background cache refresh is started so the next reque
 | `css_announce_update <sec>` | SERVER_ONLY | Announce an update in N seconds (1–3600) |
 | `css_restart_notify <sec>` | SERVER_ONLY | Send the `RestartNotify` message for that mark (0–86400) |
 | `css_reload_advert` | @css/root | Reload all four config files without a restart |
+| `css_nm_check` | @css/root | Check every template: unknown tags, missing translations |
+| `css_nm_preview <target>` | @css/root | Render a template to yourself now: `welcome`, `ad <n>`, `servers`, `key <key>`, `raw <text>` |
 
 #### Examples:
 
@@ -435,9 +463,26 @@ and put your key there. That file is gitignored — **never commit a real key**.
 
 ### Localization
 
-A player's language is detected from their IP via MaxMind GeoLite2 and cached per SteamID.
-If the database is missing or the lookup fails, `DefaultLang` is used. Local and private
-addresses always fall back to `DefaultLang`.
+Resolution order: **the player's own game language** (`cl_language`, which the engine already
+knows) → **country by IP** (MaxMind GeoLite2) → `DefaultLang`. Both are matched
+case-insensitively, so a client reporting `ru` finds a block named `RU`.
+
+The engine's answer is used first because it is a choice the player made; an IP is a guess about
+geography, not about language.
+
+`LanguageAliases` maps extra codes onto an existing block, so one set of translations serves
+several countries and language codes:
+
+```json
+"LanguageAliases": {
+  "RU": ["ru", "kk", "be", "KZ", "BY", "MD"],
+  "US": ["en", "GB", "CA", "AU"]
+}
+```
+
+Without it a player from Kazakhstan falls back to `DefaultLang`, because a `KZ` block does not
+exist and duplicating every translation per country is pointless. GeoIP still provides
+`{COUNTRY}` and `{CITY}` — that is what it is actually good for.
 
 ### Compatibility
 

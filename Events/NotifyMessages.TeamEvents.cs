@@ -1,7 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Utils;
 
 namespace NotifyMessages;
 
@@ -69,15 +70,19 @@ public partial class NotifyMessages
             _ => "{GREY}Spectators{DEFAULT}"
         };
 
+        // Значения уходят в ProcessMessage и подставляются ДО рендера. Раньше они
+        // подставлялись после него, и игрок видел в чате литеральное «{RED}Terrorists{DEFAULT}».
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{PLAYERNAME}"] = playerName,
+            ["{TEAM}"] = teamName,
+            ["{OLD_TEAM}"] = oldTeamName
+        };
+
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
         {
             // Используем steamID каждого игрока для локализации сообщения
-            var msg = _messageProcessor.ProcessMessage(Config.ChangeTeamMessage, p.SteamID)
-                .Replace("{PLAYERNAME}", playerName)
-                .Replace("{TEAM}", teamName)
-                .Replace("{OLD_TEAM}", oldTeamName);
-
-            _displayService.Print(HudDestination.Chat, msg, p);
+            _displayService.Print(MessageType.Chat, Config.ChangeTeamMessage, p, values);
         }
     }
 
@@ -94,14 +99,16 @@ public partial class NotifyMessages
             _ => "{GREY}Spectators{DEFAULT}"
         };
 
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{PLAYERNAME}"] = playerName,
+            ["{TEAM}"] = teamName
+        };
+
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
         {
             // Используем steamID каждого игрока для локализации сообщения
-            var msg = _messageProcessor.ProcessMessage(Config.JoinTeamMessage, p.SteamID)
-                .Replace("{PLAYERNAME}", playerName)
-                .Replace("{TEAM}", teamName);
-
-            _displayService.Print(HudDestination.Chat, msg, p);
+            _displayService.Print(MessageType.Chat, Config.JoinTeamMessage, p, values);
         }
     }
 

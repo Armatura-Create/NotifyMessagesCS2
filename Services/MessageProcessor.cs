@@ -22,7 +22,21 @@ namespace NotifyMessages;
 /// (NativeAPI.GetMapName, ConVar.Find, Utilities.GetPlayers).
 public sealed class MessageProcessor
 {
-    private static readonly Regex TagPattern = new Regex(@"\{([^}]*)\}", RegexOptions.Compiled);
+    // internal, а не private: диагностика шаблонов обязана видеть ровно те же теги,
+    // что и подстановка, иначе анализатор начнёт врать.
+    internal static readonly Regex TagPattern = new Regex(@"\{([^}]*)\}", RegexOptions.Compiled);
+
+    /// Теги, которые ReplaceMessageTags подставляет в любом сообщении, без всякого контекста.
+    /// Список — источник истины для диагностики шаблонов, держать синхронно с ReplaceMessageTags.
+    internal static readonly string[] SystemTags =
+    {
+        "{MAP}", "{TIME}", "{DATE}", "{SERVERNAME}", "{IP}", "{PORT}", "{MAXPLAYERS}", "{PLAYERS}"
+    };
+
+    private static readonly HashSet<string> SystemTagSet =
+        new(SystemTags, StringComparer.OrdinalIgnoreCase);
+
+    internal static bool IsSystemTag(string tag) => SystemTagSet.Contains(tag);
 
     private readonly Config _config;
     private readonly Func<ulong, string?> _getIsoCodeBySteamId;
@@ -39,14 +53,29 @@ public sealed class MessageProcessor
         return _getIsoCodeBySteamId(steamId);
     }
 
-    /// Применяет локализацию и замену тегов
-    public string ProcessMessage(string message, ulong steamId)
+    /// Применяет локализацию, контекстные значения, системные теги и рендер под канал.
+    ///
+    /// Порядок частей не произволен:
+    ///   язык -> контекстные значения -> системные теги -> рендер.
+    /// Значения подставляются ДО рендера, потому что сами содержат теги ({RED}Terrorists{DEFAULT}).
+    /// Раньше их подставляли после ProcessMessage, и игрок видел эти теги текстом.
+    public string ProcessMessage(string message, ulong steamId,
+        MessageType channel = MessageType.Chat,
+        IReadOnlyDictionary<string, string>? values = null)
     {
         if (string.IsNullOrEmpty(message))
             return string.Empty;
 
-        if (_config.LanguageMessages == null)
-            return ReplaceMessageTags(message).ReplaceColorTags();
+        var result = ApplyLanguage(message, steamId);
+        result = ApplyValues(result, values, channel);
+        result = ReplaceMessageTags(result);
+
+        return Render(result, channel);
+    }
+
+    private string ApplyLanguage(string message, ulong steamId)
+    {
+        if (_config.LanguageMessages == null) return message;
 
         var matches = TagPattern.Matches(message);
         foreach (Match match in matches)
@@ -60,17 +89,46 @@ public sealed class MessageProcessor
             var isoCode = steamId > 0 ? _getIsoCodeBySteamId(steamId) : _config.DefaultLang;
 
             if (isoCode != null && language.TryGetValue(isoCode, out var replacement))
-                message = message.Replace(tag, replacement);
+                message = message.Replace(tag, replacement, StringComparison.Ordinal);
             else if (_config.DefaultLang != null && language.TryGetValue(_config.DefaultLang, out var defReplacement))
-                message = message.Replace(tag, defReplacement);
+                message = message.Replace(tag, defReplacement, StringComparison.Ordinal);
         }
 
-        return ReplaceMessageTags(message).ReplaceColorTags();
+        return message;
     }
 
-    /// Возвращает случайное сообщение из набора (Join/Leave) с учётом языка игрока
-    public string GetRandomLocalizedMessage(Dictionary<string, List<string>>? messages, ulong recipientSteamId,
-        string playerName, string country, string city)
+    /// Подстановка контекстных значений ({PLAYERNAME}, {TEAM}, {SECONDS}, ...).
+    /// Регистр игнорируется: дефолтный Messages.json пишет часть тегов строчными.
+    /// Для HTML-панели значения экранируются — ник игрока это недоверенные данные.
+    internal static string ApplyValues(string message, IReadOnlyDictionary<string, string>? values,
+        MessageType channel)
+    {
+        if (values == null || values.Count == 0) return message;
+
+        foreach (var (tag, value) in values)
+        {
+            var safe = channel == MessageType.CenterHtml ? TextFormatter.EscapeHtml(value) : value;
+            message = TextFormatter.ReplaceIgnoreCase(message, tag, safe);
+        }
+
+        return message;
+    }
+
+    /// Финальный рендер. У каналов разные грамматики, одна строка не может быть верной во всех:
+    /// чат понимает управляющие байты, HTML-панель — разметку, центр и консоль — только текст.
+    internal static string Render(string text, MessageType channel) => channel switch
+    {
+        MessageType.Chat => text.ReplaceColorTags().Replace("\n", "\u2029", StringComparison.Ordinal),
+        MessageType.CenterHtml => TextFormatter.ToCenterHtml(text),
+        // В консоли перенос строки — настоящий \n, а не U+2029
+        MessageType.Console => TextFormatter.RemoveColorTags(text),
+        _ => TextFormatter.RemoveColorTags(text).Replace("\n", "\u2029", StringComparison.Ordinal)
+    };
+
+    /// Возвращает случайный ШАБЛОН из набора (Join/Leave) на языке получателя.
+    /// Значения ({PLAYERNAME}, {COUNTRY}, {CITY}) подставляет ProcessMessage — единственная
+    /// точка подстановки на весь плагин.
+    public string GetRandomLocalizedMessage(Dictionary<string, List<string>>? messages, ulong recipientSteamId)
     {
         if (messages == null || messages.Count == 0) return string.Empty;
 
@@ -81,12 +139,7 @@ public sealed class MessageProcessor
 
         if (!messages.TryGetValue(lang, out var messageList) || messageList.Count == 0) return string.Empty;
 
-        var message = messageList[Random.Shared.Next(messageList.Count)];
-
-        return message
-            .Replace("{PLAYERNAME}", playerName)
-            .Replace("{COUNTRY}", country)
-            .Replace("{CITY}", city);
+        return messageList[Random.Shared.Next(messageList.Count)];
     }
 
     /// Заменяет системные теги и имена карт.
@@ -123,8 +176,6 @@ public sealed class MessageProcessor
         if (result.Contains("{PLAYERS}", StringComparison.Ordinal))
             result = result.Replace("{PLAYERS}",
                 Utilities.GetPlayers().Count(u => u.PlayerPawn?.Value?.IsValid == true).ToString(CultureInfo.InvariantCulture));
-
-        result = result.Replace("\n", "\u2029");
 
         if (_config.MapsName != null)
         {

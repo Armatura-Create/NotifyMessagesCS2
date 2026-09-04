@@ -6,7 +6,6 @@ using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes.Registration;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
-using CounterStrikeSharp.API.Modules.Utils;
 
 namespace NotifyMessages;
 
@@ -61,7 +60,8 @@ public partial class NotifyMessages
         _logger.Debug($"[COMMAND] css_servers by {controller.PlayerName}, showing {Config.Servers.List.Count} server(s)");
 
         // Показываем текущие данные из кеша
-        _serverStatusService.AnnounceToPlayer(controller, _messageProcessor, _displayService.Print);
+        _serverStatusService.AnnounceToPlayer(controller,
+            (channel, message, target) => _displayService.Print(channel, message, target));
 
         // И просим обновить кеш в фоне к следующему запросу (респектит TTL и in-flight guard)
         _serverStatusService.TriggerBackgroundUpdate();
@@ -99,9 +99,14 @@ public partial class NotifyMessages
         }
 
         var formattedTime = TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss", CultureInfo.InvariantCulture);
-        var message = _messageProcessor.ProcessMessage(template, 0).Replace("{TIME_RESTART}", formattedTime);
 
-        _displayService.Print(HudDestination.Chat, message);
+        // Значение отдаём в Print: подстановка обязана произойти до рендера, иначе теги
+        // внутри подставленного текста останутся текстом.
+        _displayService.Print(MessageType.Chat, template, null,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["{TIME_RESTART}"] = formattedTime
+            });
     }
 
     /// Оповестить игроков о предстоящем рестарте/обновлении.
@@ -135,17 +140,17 @@ public partial class NotifyMessages
             return;
         }
 
-        // {SECONDS}/{TIME_RESTART} подставляем ДО ProcessMessage, чтобы они долетели
-        // и внутрь текстов из Messages.json
+        // {SECONDS}/{TIME_RESTART} долетают и внутрь текстов из Messages.json:
+        // ProcessMessage подставляет значения после локализации, но до рендера.
         var formattedTime = TimeSpan.FromSeconds(seconds).ToString(@"mm\:ss", CultureInfo.InvariantCulture);
-        var message = template
-            .Replace("{SECONDS}", seconds.ToString(CultureInfo.InvariantCulture))
-            .Replace("{TIME_RESTART}", formattedTime);
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{SECONDS}"] = seconds.ToString(CultureInfo.InvariantCulture),
+            ["{TIME_RESTART}"] = formattedTime
+        };
 
-        var destination = DisplayService.ToHudDestination(notify.MessageType);
-
-        _logger.Info($"[COMMAND] css_restart_notify {seconds}s -> {destination}");
-        _displayService.Print(destination, message);
+        _logger.Info($"[COMMAND] css_restart_notify {seconds}s -> {notify.MessageType}");
+        _displayService.Print(notify.MessageType, template, null, values);
     }
 
     [RequiresPermissions("@css/root")]
@@ -155,8 +160,9 @@ public partial class NotifyMessages
         _logger.Info($"[COMMAND] css_reload_advert executed by {controller?.PlayerName ?? "Console"}");
 
         Config = LoadConfigSafely();
-        _messageProcessor = new MessageProcessor(Config,
-            steamId => _geoIpService.GetIsoForSteamId(steamId) ?? Config.DefaultLang);
+        // Индекс языков кеширует Config — пересобираем, иначе останется на старом конфиге
+        _languageIndex = LanguageIndex.Build(Config);
+        _messageProcessor = new MessageProcessor(Config, ResolveLanguage);
         _displayService.Update(Config, _messageProcessor);
 
         // Re-init services and timers to apply new config

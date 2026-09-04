@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Modules.Timers;
-using CounterStrikeSharp.API.Modules.Utils;
 using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
 
 namespace NotifyMessages;
@@ -13,7 +12,7 @@ public sealed class AdvertisementService
     private readonly Config _config;
     private readonly ILogger _logger;
     private readonly Func<float, Action, TimerFlags, Timer> _addTimer;
-    private readonly Action<HudDestination?, string, CCSPlayerController?> _print;
+    private readonly Action<MessageType, string, CCSPlayerController?> _print;
 
     private readonly List<Timer> _timers = new();
 
@@ -21,7 +20,7 @@ public sealed class AdvertisementService
         Config config,
         ILogger logger,
         Func<float, Action, TimerFlags, Timer> addTimer,
-        Action<HudDestination?, string, CCSPlayerController?> print)
+        Action<MessageType, string, CCSPlayerController?> print)
     {
         _config = config;
         _logger = logger;
@@ -62,23 +61,18 @@ public sealed class AdvertisementService
 
         foreach (var (type, message) in messages)
         {
-            HudDestination dest;
-            switch (type)
+            // Одна нотация канала на весь конфиг. Раньше здесь был switch по точному регистру:
+            // "chat" молча терялся, а Alert и CenterHtml не поддерживались вовсе.
+            if (!Enum.TryParse<MessageType>(type, ignoreCase: true, out var channel))
             {
-                case "Chat":
-                    dest = HudDestination.Chat; break;
-                case "Center":
-                    dest = HudDestination.Center; break;
-                case "Console":
-                    dest = HudDestination.Console; break;
-                default:
-                    // неизвестный тип — пропускаем
-                    _logger.Debug($"[ADS] Unknown message type '{type}'");
-                    continue;
+                // Это ошибка конфига, а не отладочный шум — админ должен её увидеть
+                _logger.Info($"[ADS] Неизвестный канал '{type}'. Допустимые: " +
+                             "Chat, Center, CenterHtml, Console, Alert");
+                continue;
             }
 
             // Делегируем обработку/локализацию и фактический вывод наружу
-            _print(dest, message, null);
+            _print(channel, message, null);
         }
     }
 }

@@ -52,6 +52,11 @@ public static class TextFormatter
     private static readonly KeyValuePair<string, string>[] SortedTags =
         ColorTagMap.OrderByDescending(kv => kv.Key.Length).ToArray();
 
+    /// Теги, которые умеет подставить ReplaceColorTags. Диагностика шаблонов берёт список
+    /// отсюда, а не заводит свой — иначе он неизбежно разъедется с реализацией.
+    internal static IReadOnlySet<string> KnownColorTags { get; } =
+        new HashSet<string>(ColorTagMap.Keys, StringComparer.OrdinalIgnoreCase) { "{SPACE}" };
+
     /// Заменяет цветовые теги на управляющие коды движка CS2
     public static string ReplaceColorTags(this string input)
     {
@@ -71,6 +76,107 @@ public static class TextFormatter
         return result;
     }
 
+    // Приблизительные hex-эквиваленты цветов чата — ТОЛЬКО для HTML-центра.
+    // Отдельная таблица, а не замена ColorTagMap: чат по-прежнему обязан брать коды
+    // из ChatColors (своя таблица однажды уже перекрасила половину тегов).
+    private static readonly IReadOnlyDictionary<string, string> HtmlColorMap =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{DEFAULT}"] = "#FFFFFF",
+            ["{WHITE}"] = "#FFFFFF",
+            ["{DARKRED}"] = "#8B0000",
+            ["{LIGHTYELLOW}"] = "#FFFF99",
+            ["{LIGHTBLUE}"] = "#99CCFF",
+            ["{OLIVE}"] = "#9EC34F",
+            ["{LIME}"] = "#00FF00",
+            ["{GREEN}"] = "#3EFF3E",
+            ["{RED}"] = "#FF4040",
+            ["{LIGHTPURPLE}"] = "#FF99FF",
+            ["{PURPLE}"] = "#8B008B",
+            ["{GREY}"] = "#CCCCCC",
+            ["{GRAY}"] = "#CCCCCC",
+            ["{YELLOW}"] = "#FFFF00",
+            ["{GOLD}"] = "#FFD700",
+            ["{SILVER}"] = "#C0C0C0",
+            ["{BLUE}"] = "#6699FF",
+            ["{DARKBLUE}"] = "#00008B",
+            ["{BLUEGREY}"] = "#6A5ACD",
+            ["{MAGENTA}"] = "#FF00FF",
+            ["{LIGHTRED}"] = "#FF6666",
+            ["{ORANGE}"] = "#FFA500"
+        };
+
+    // Размеры HTML-панели: классы движка. Незнакомый класс панель просто игнорирует,
+    // поэтому худший случай — обычный размер, а не поломанная разметка.
+    private static readonly IReadOnlyDictionary<string, string> HtmlSizeMap =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{BIG}"] = "<font class='fontSize-l'>",
+            ["{MEDIUM}"] = "<font class='fontSize-m'>",
+            ["{SMALL}"] = "<font class='fontSize-sm'>"
+        };
+
+    private static readonly KeyValuePair<string, string>[] SortedHtmlTags = HtmlColorMap
+        .Select(kv => new KeyValuePair<string, string>(kv.Key, $"<font color='{kv.Value}'>"))
+        .Concat(HtmlSizeMap)
+        .OrderByDescending(kv => kv.Key.Length)
+        .ToArray();
+
+    // Те же теги, но на выброс: канал не умеет ни цвет, ни размер.
+    private static readonly string[] SortedPlainTags = HtmlColorMap.Keys
+        .Concat(HtmlSizeMap.Keys)
+        .OrderByDescending(k => k.Length)
+        .ToArray();
+
+    /// Рендер для HTML-центра: цвет тегом <font>, перенос строки — <br>.
+    /// Управляющие коды чата этот канал не понимает вовсе, поэтому здесь их быть не должно.
+    public static string ToCenterHtml(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+
+        var result = input
+            .Replace("\n", "<br>", StringComparison.Ordinal)
+            .Replace("\u2029", "<br>", StringComparison.Ordinal)
+            .Replace("{SPACE}", "&nbsp;&nbsp;&nbsp;", StringComparison.OrdinalIgnoreCase);
+
+        foreach (var kv in SortedHtmlTags)
+        {
+            if (result.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
+                result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return result;
+    }
+
+    /// Убирает цветовые теги, не подставляя ничего: для plain-каналов (центр, консоль, alert).
+    /// Раньше туда уходили управляющие байты чата, которые эти каналы не рендерят.
+    public static string RemoveColorTags(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        if (input.IndexOf('{') < 0) return input;
+
+        var result = input.Replace("{SPACE}", SpaceFiller, StringComparison.OrdinalIgnoreCase);
+
+        foreach (var tag in SortedPlainTags)
+        {
+            if (result.Contains(tag, StringComparison.OrdinalIgnoreCase))
+                result = Replace(result, tag, string.Empty, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return result;
+    }
+
+    /// Экранирование значений, попадающих в HTML-панель. Ник игрока — недоверенные данные:
+    /// без этого «<img src=x>» в нике ломает панель всем зрителям.
+    public static string EscapeHtml(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        return input
+            .Replace("&", "&amp;", StringComparison.Ordinal)
+            .Replace("<", "&lt;", StringComparison.Ordinal)
+            .Replace(">", "&gt;", StringComparison.Ordinal);
+    }
+
     /// Удаляет управляющие цветовые коды из строки (для логов и консоли)
     public static string StripColorCodes(string input)
     {
@@ -88,6 +194,12 @@ public static class TextFormatter
         // Префиксуем только если в строке уже есть цветовые коды
         return ColorCodesRegex.IsMatch(input) ? ChatColors.Default + input : input;
     }
+
+    /// Replace с игнором регистра. internal: подстановка контекстных значений
+    /// ({PLAYERNAME}, {COUNTRY}, ...) обязана работать вне зависимости от того, каким регистром
+    /// админ написал тег в конфиге — дефолтный Messages.json пишет их строчными.
+    internal static string ReplaceIgnoreCase(string text, string search, string replacement)
+        => Replace(text, search, replacement, StringComparison.OrdinalIgnoreCase);
 
     // Вспомогательный Replace с игнором регистра
     private static string Replace(this string text, string search, string replacement, StringComparison comparison)

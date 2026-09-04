@@ -275,8 +275,10 @@ public sealed class ServerStatusService
 
     /// Объявить список серверов игроку, используя текущий снимок кеша.
     /// Вызывать только из главного потока.
-    public void AnnounceToPlayer(CCSPlayerController controller, MessageProcessor processor,
-        Action<HudDestination?, string, CCSPlayerController?> print)
+    /// Шаблоны из кеша отдаются в print как есть: локализацию, подстановку и рендер
+    /// делает DisplayService.Print. Раньше строка обрабатывалась дважды.
+    public void AnnounceToPlayer(CCSPlayerController controller,
+        Action<MessageType, string, CCSPlayerController?> print)
     {
         if (!Enabled)
         {
@@ -296,20 +298,18 @@ public sealed class ServerStatusService
         }
 
         if (!string.IsNullOrEmpty(_config.TitleAnnounceServers))
-            print(HudDestination.Chat, _config.TitleAnnounceServers!, controller);
+            print(MessageType.Chat, _config.TitleAnnounceServers!, controller);
 
         foreach (var entry in snapshot)
         {
-            var msg = processor.ProcessMessage(entry.Chat, controller.SteamID);
-            if (!string.IsNullOrEmpty(msg))
-                print(HudDestination.Chat, msg, controller);
+            if (!string.IsNullOrEmpty(entry.Chat))
+                print(MessageType.Chat, entry.Chat, controller);
         }
 
         foreach (var entry in snapshot)
         {
-            var msg = processor.ProcessMessage(entry.Console, controller.SteamID);
-            if (!string.IsNullOrEmpty(msg))
-                print(HudDestination.Console, msg, controller);
+            if (!string.IsNullOrEmpty(entry.Console))
+                print(MessageType.Console, entry.Console, controller);
         }
 
         _logger.Debug("[ServerStatus] Finished showing server list");

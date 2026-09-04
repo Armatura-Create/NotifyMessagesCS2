@@ -11,6 +11,12 @@ namespace NotifyMessages;
 /// Применяются ровно один раз — при первом запуске, когда конфигов ещё нет.
 public sealed partial class ConfigService
 {
+    /// Дефолтная конфигурация целиком — ровно та, что пишется при первом запуске.
+    /// internal ради теста: дефолты обязаны быть чистыми с точки зрения диагностики шаблонов,
+    /// иначе первый же запуск показывает игрокам теги в фигурных скобках.
+    internal static Config BuildDefaultConfig() => MergeParts(
+        CreateDefaultSettings(), CreateDefaultMessages(), CreateDefaultAds(), CreateDefaultServers());
+
     private static SettingsConfig CreateDefaultSettings()
     {
         return new SettingsConfig
@@ -55,6 +61,18 @@ public sealed partial class ConfigService
             },
 
             
+            // Один блок переводов обслуживает несколько стран и языковых кодов.
+            // Игрок с русским клиентом или из соседней страны не должен видеть DefaultLang
+            // только потому, что блока под его ISO-код в конфиге нет.
+            LanguageAliases = new Dictionary<string, List<string>>
+            {
+                ["RU"] = new() { "ru", "be", "kk", "BY", "KZ", "MD", "AM", "KG", "UZ" },
+                ["US"] = new() { "en", "GB", "CA", "AU", "NZ", "IE" },
+                ["UA"] = new() { "uk" },
+                ["PL"] = new() { "pl" },
+                ["DE"] = new() { "de", "AT", "CH" }
+            },
+
             MapsName = new Dictionary<string, string>
             {
                 ["de_dust2"] = "Dust 2",
@@ -77,11 +95,11 @@ public sealed partial class ConfigService
             {
                 ["prefix"] = new()
                 {
-                    ["RU"] = "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-                    ["US"] = "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-                    ["UA"] = "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-                    ["PL"] = "{LIGHTBLUE}Armaturix ➡{DEFAULT} ",
-                    ["DE"] = "{LIGHTBLUE}Armaturix ➡{DEFAULT} "
+                    ["RU"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
+                    ["US"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
+                    ["UA"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
+                    ["PL"] = "{LIGHTBLUE}Server ➡{DEFAULT} ",
+                    ["DE"] = "{LIGHTBLUE}Server ➡{DEFAULT} "
                 },
                 
                 // Системные сообщения
@@ -222,11 +240,11 @@ public sealed partial class ConfigService
                 },
                 ["welcome_text"] = new()
                 {
-                    ["RU"] = "на игровой сервер {RED}Armaturix",
-                    ["US"] = "to the game server {RED}Armaturix",
-                    ["UA"] = "на ігровий сервер {RED}Armaturix",
-                    ["PL"] = "na serwer gry {RED}Armaturix",
-                    ["DE"] = "auf den Spieleserver {RED}Armaturix"
+                    ["RU"] = "на игровой сервер {RED}{SERVERNAME}",
+                    ["US"] = "to the game server {RED}{SERVERNAME}",
+                    ["UA"] = "на ігровий сервер {RED}{SERVERNAME}",
+                    ["PL"] = "na serwer gry {RED}{SERVERNAME}",
+                    ["DE"] = "auf den Spieleserver {RED}{SERVERNAME}"
                 },
                 
                 // Реклама (используется в Ads.json)
@@ -248,19 +266,19 @@ public sealed partial class ConfigService
                 },
                 ["reklama_3"] = new()
                 {
-                    ["RU"] = "Общайся, находи тиммейтов и узнавай новости в нашем Discord:\nㅤㅤㅤ{RED}➡ discord.gg/WdmjUSYehW",
-                    ["US"] = "Chat, find teammates, and stay updated in our Discord:\nㅤㅤㅤ{RED}➡ discord.gg/WdmjUSYehW",
-                    ["UA"] = "Спілкуйся, знаходь тіммейтів та дізнавайся новини в нашому Discord:\nㅤㅤㅤ{RED}➡ discord.gg/WdmjUSYehW",
-                    ["PL"] = "Rozmawiaj, znajdź drużynę i bądź na bieżąco na naszym Discordzie:\nㅤㅤㅤ{RED}➡ discord.gg/WdmjUSYehW",
-                    ["DE"] = "Chatte, finde Teammates und bleibe informiert auf unserem Discord:\nㅤㅤㅤ{RED}➡ discord.gg/WdmjUSYehW"
+                    ["RU"] = "Общайся, находи тиммейтов и узнавай новости в нашем Discord:\nㅤㅤㅤ{RED}➡ discord.gg/CHANGE-ME",
+                    ["US"] = "Chat, find teammates, and stay updated in our Discord:\nㅤㅤㅤ{RED}➡ discord.gg/CHANGE-ME",
+                    ["UA"] = "Спілкуйся, знаходь тіммейтів та дізнавайся новини в нашому Discord:\nㅤㅤㅤ{RED}➡ discord.gg/CHANGE-ME",
+                    ["PL"] = "Rozmawiaj, znajdź drużynę i bądź na bieżąco na naszym Discordzie:\nㅤㅤㅤ{RED}➡ discord.gg/CHANGE-ME",
+                    ["DE"] = "Chatte, finde Teammates und bleibe informiert auf unserem Discord:\nㅤㅤㅤ{RED}➡ discord.gg/CHANGE-ME"
                 },
                 ["reklama_4"] = new()
                 {
-                    ["RU"] = "Хотите персональный стиль? Собери сет скинов на\nㅤㅤㅤ{RED}➡ skins.armaturix.net",
-                    ["US"] = "Want your own style? Customize your skins at\nㅤㅤㅤ{RED}➡ skins.armaturix.net",
-                    ["UA"] = "Хочеш власний стиль? Створюй свій сет скінів на\nㅤㅤㅤ{RED}➡ skins.armaturix.net",
-                    ["PL"] = "Chcesz własny styl? Skonfiguruj swoje skiny na\nㅤㅤㅤ{RED}➡ skins.armaturix.net",
-                    ["DE"] = "Dein eigener Stil? Erstelle dein Skin-Set auf\nㅤㅤㅤ{RED}➡ skins.armaturix.net"
+                    ["RU"] = "Хотите персональный стиль? Собери сет скинов на\nㅤㅤㅤ{RED}➡ your-site.example",
+                    ["US"] = "Want your own style? Customize your skins at\nㅤㅤㅤ{RED}➡ your-site.example",
+                    ["UA"] = "Хочеш власний стиль? Створюй свій сет скінів на\nㅤㅤㅤ{RED}➡ your-site.example",
+                    ["PL"] = "Chcesz własny styl? Skonfiguruj swoje skiny na\nㅤㅤㅤ{RED}➡ your-site.example",
+                    ["DE"] = "Dein eigener Stil? Erstelle dein Skin-Set auf\nㅤㅤㅤ{RED}➡ your-site.example"
                 },
                 ["reklama_5"] = new()
                 {
@@ -392,238 +410,73 @@ public sealed partial class ConfigService
 
     // ---- README файл ----------------------------------------------------------
 
+    /// Короткая шпаргалка рядом с конфигами.
+    ///
+    /// Раньше здесь было 230 строк, которые писались ровно один раз — при первом запуске —
+    /// и после обновления плагина описывали старую версию. Подробности теперь живут
+    /// в *.schema.json (редактор подсказывает прямо во время правки) и в README.md проекта,
+    /// а файл перезаписывается при каждой загрузке.
     private static void CreateConfigReadme(string directory)
     {
         var readmePath = Path.Combine(directory, "README.txt");
-        var content = @"═══════════════════════════════════════════════════════════════════════════════
-  NotifyMessages - Configuration Guide
-═══════════════════════════════════════════════════════════════════════════════
+        var content = @"NotifyMessages — конфигурация
+==============================================================================
 
-Конфигурация плагина разделена на 4 файла для удобства:
+Settings.json   основные настройки (тексты сюда не пишут — только ключи)
+Messages.json   все тексты и переводы: ключ -> язык -> строка
+Ads.json        блоки рекламы
+Servers.json    мониторинг других серверов для команды !servers
 
-📁 Settings.json   - Основные настройки плагина
-📁 Messages.json   - Все переводы и текстовые сообщения
-📁 Ads.json        - Настройка рекламных объявлений
-📁 Servers.json    - Список серверов для отображения онлайна
+Рядом лежат *.schema.json. Откройте конфиг в редакторе с поддержкой JSON Schema
+(например VS Code) — он будет подсказывать имена полей, допустимые значения
+и подсвечивать опечатки. Это заменяет подробную документацию: она устаревает,
+схема — нет, потому что обновляется вместе с плагином.
 
-═══════════════════════════════════════════════════════════════════════════════
-1️⃣  Settings.json - Основные настройки
-═══════════════════════════════════════════════════════════════════════════════
+ЧТО ДЕЛАТЬ ПОСЛЕ ПРАВКИ
+------------------------------------------------------------------------------
+  css_nm_check                 проверить шаблоны: неизвестные теги, дыры в переводах
+  css_nm_preview welcome       показать приветствие себе прямо сейчас
+  css_nm_preview ad 1          показать первый блок рекламы
+  css_nm_preview key prefix    показать один ключ из Messages.json
+  css_nm_preview raw {RED}тест произвольный текст с тегами
+  css_reload_advert            применить изменения всех четырёх файлов
 
-• Debug                  - Включить детальное логирование (true/false)
-• DefaultLang            - Язык по умолчанию (RU, US, UA, PL, DE)
-• PrintToCenterHtml      - Использовать HTML для центральных сообщений
-• ShowHtmlWhenDead       - Показывать HTML-сообщения мертвым игрокам
-• HtmlCenterDuration     - Длительность показа HTML в секундах
-• WelcomeMessage         - Приветственное сообщение при подключении
-• RestartMessage         - Сообщение о перезапуске сервера
-• UpdateMessage          - Сообщение об обновлении
-• ChangeTeamMessage      - Сообщение при смене команды
-• JoinTeamMessage        - Сообщение при входе в команду
-• TitleAnnounceServers   - Заголовок для команды !servers
-• MapsName               - Красивые названия карт
+Проверять правку перезапуском сервера или ожиданием интервала рекламы не нужно.
 
-═══════════════════════════════════════════════════════════════════════════════
-2️⃣  Messages.json - Переводы и сообщения
-═══════════════════════════════════════════════════════════════════════════════
+КАНАЛЫ ВЫВОДА
+------------------------------------------------------------------------------
+  Chat         чат. Цвета работают
+  Center       центр экрана, обычный текст. Цветовые теги будут убраны
+  CenterHtml   центр экрана с разметкой. Цвета и переносы строк работают
+  Console      консоль игрока
+  Alert        центральное предупреждение
 
-Структура:
-{
-  ""LanguageMessages"": {
-    ""ключ"": {
-      ""RU"": ""Русский текст"",
-      ""US"": ""English text"",
-      ""UA"": ""Український текст"",
-      ...
-    }
-  },
-  ""JoinMessages"": { ... },   // Сообщения при подключении
-  ""LeaveMessages"": { ... }   // Сообщения при отключении
-}
+Канал задаётся полем MessageType (Settings.json) или ключом объекта (Ads.json).
+Пишется словом: ""CenterHtml"". Старые числовые значения тоже читаются.
 
-Использование в конфигах:
-• В Settings.json: ""{prefix}{welcome_player}""
-• В Ads.json: ""{prefix}{reklama_1}""
+ЦВЕТА И ПЛЕЙСХОЛДЕРЫ
+------------------------------------------------------------------------------
+Цвета: {DEFAULT} {WHITE} {RED} {DARKRED} {LIGHTRED} {GREEN} {LIME} {OLIVE}
+       {YELLOW} {LIGHTYELLOW} {GOLD} {ORANGE} {BLUE} {LIGHTBLUE} {DARKBLUE}
+       {PURPLE} {LIGHTPURPLE} {MAGENTA} {GREY} {SILVER} {BLUEGREY}
+Размер (только CenterHtml): {BIG} {MEDIUM} {SMALL}
+Прочее: {SPACE} — широкий пробел, \n — перенос строки
 
-Плагин автоматически подставит перевод для языка игрока!
+Всегда доступны: {MAP} {TIME} {DATE} {SERVERNAME} {IP} {PORT} {PLAYERS} {MAXPLAYERS}
+Только в своих местах: {PLAYERNAME} {TEAM} {OLD_TEAM} {SECONDS} {TIME_RESTART}
+                       {COUNTRY} {CITY} {SERVER_MAP} {SERVER_PLAYERS} ...
+Где какой работает — скажет css_nm_check.
 
-═══════════════════════════════════════════════════════════════════════════════
-3️⃣  Ads.json - Реклама
-═══════════════════════════════════════════════════════════════════════════════
+ЕСЛИ ЧТО-ТО НЕ РАБОТАЕТ
+------------------------------------------------------------------------------
+Тег виден игроку как текст в скобках   -> css_nm_check покажет, где он лишний
+!servers молчит                        -> Servers.json: ""Enabled"": true и непустой List
+Серверы показывают OFFLINE             -> проверьте IP/порт, поднимите QueryTimeoutMs
+Битый JSON                             -> плагин не падает, а берёт значения по умолчанию
+                                          и пишет в консоль файл, строку и позицию ошибки
 
-Каждый блок рекламы:
-{
-  ""Interval"": 120,           // Интервал показа в секундах
-  ""Messages"": [
-    { ""Chat"": ""..."" },      // Показать в чате
-    { ""Center"": ""..."" },    // Показать в центре экрана
-    { ""Console"": ""..."" }    // Показать в консоли
-  ]
-}
-
-Можно использовать ключи из Messages.json:
-{ ""Chat"": ""{prefix}{reklama_1}"" }
-
-═══════════════════════════════════════════════════════════════════════════════
-4️⃣  Servers.json - Серверы
-═══════════════════════════════════════════════════════════════════════════════
-
-• Enabled              - Включить функционал серверов (true/false)
-• Interval             - Интервал опроса в секундах (60+)
-• QueryTimeoutMs       - Таймаут A2S запроса в мс (200-5000)
-• CacheTtlSeconds      - Время жизни кеша в секундах (0-60)
-• List                 - Список серверов
-
-Для каждого сервера:
-{
-  ""Ip"": ""123.45.67.89"",
-  ""Port"": 27015,
-  ""MessageTemplate"": ""..."",         // Шаблон для чата
-  ""MessageTemplateConsole"": ""..."",  // Шаблон для консоли
-  ""MaxPlayersFallback"": 32           // Макс. игроков если сервер OFFLINE
-}
-
-Плейсхолдеры для шаблонов:
-{SERVER_IP}         - IP сервера
-{SERVER_PORT}       - Порт сервера
-{SERVER_MAP}        - Текущая карта (или ""OFFLINE"")
-{SERVER_PLAYERS}    - Количество игроков
-{SERVER_MAXPLAYERS} - Максимум игроков
-
-═══════════════════════════════════════════════════════════════════════════════
-🎨 Цветовые теги
-═══════════════════════════════════════════════════════════════════════════════
-
-Коды берутся из CounterStrikeSharp (ChatColors) - то, что видно в игре.
-
-{DEFAULT} / {WHITE}      - Белый
-{DARKRED}                - Темно-красный
-{RED}                    - Красный
-{LIGHTRED}               - Светло-красный
-{GREEN}                  - Зеленый
-{LIME}                   - Лайм (светло-зеленый)
-{OLIVE}                  - Оливковый
-{YELLOW} / {LIGHTYELLOW} - Желтый
-{GOLD} / {ORANGE}        - Золотой / Оранжевый
-{BLUE} / {LIGHTBLUE}     - Синий
-{DARKBLUE}               - Темно-синий
-{PURPLE} / {MAGENTA}     - Фиолетовый
-{LIGHTPURPLE}            - Светло-фиолетовый (розовый)
-{GREY} / {GRAY}          - Серый
-{SILVER} / {BLUEGREY}    - Серебряный
-
-{SPACE}                  - Широкий пробел для выравнивания
-\n                       - Перенос строки
-
-═══════════════════════════════════════════════════════════════════════════════
-🔧 Системные плейсхолдеры
-═══════════════════════════════════════════════════════════════════════════════
-
-{MAP}           - Название текущей карты
-{TIME}          - Текущее время (HH:mm:ss)
-{DATE}          - Текущая дата (dd.MM.yyyy)
-{SERVERNAME}    - Имя сервера (hostname)
-{IP}            - IP сервера
-{PORT}          - Порт сервера
-{MAXPLAYERS}    - Максимум слотов
-{PLAYERS}       - Количество игроков онлайн
-{PLAYERNAME}    - Имя игрока (в определённых контекстах)
-
-Специальные (для команд/событий):
-{TEAM}          - Название команды
-{OLD_TEAM}      - Прежняя команда
-{TIME_RESTART}  - Время до рестарта (для команд !restart/!update)
-
-═══════════════════════════════════════════════════════════════════════════════
-📝 Примеры использования
-═══════════════════════════════════════════════════════════════════════════════
-
-1. Добавить новое рекламное сообщение:
-
-В Messages.json:
-""my_custom_ad"": {
-  ""RU"": ""Мой текст на русском"",
-  ""US"": ""My text in English""
-}
-
-В Ads.json:
-{
-  ""Interval"": 300,
-  ""Messages"": [
-    { ""Chat"": ""{prefix}{my_custom_ad}"" }
-  ]
-}
-
-2. Настроить приветствие:
-
-В Settings.json:
-""WelcomeMessage"": {
-  ""MessageType"": 0,  // 0=Chat, 1=Center, 2=CenterHtml, 3=Console
-  ""Message"": ""{prefix}{GREEN}{PLAYERNAME}{DEFAULT}, добро пожаловать!"",
-  ""DisplayDelay"": 5
-}
-
-3. Добавить сервер для отображения:
-
-В Servers.json добавьте в ""List"":
-{
-  ""Ip"": ""192.168.1.100"",
-  ""Port"": 27015,
-  ""MessageTemplate"": ""{LIGHTBLUE}[МОЙ СЕРВЕР]{DEFAULT} {SERVER_MAP} | {GREEN}{SERVER_PLAYERS}{DEFAULT}/{SERVER_MAXPLAYERS}"",
-  ""MessageTemplateConsole"": ""Мой Сервер: {SERVER_IP}:{SERVER_PORT}"",
-  ""MaxPlayersFallback"": 32
-}
-
-═══════════════════════════════════════════════════════════════════════════════
-⚙️ Команды
-═══════════════════════════════════════════════════════════════════════════════
-
-Для игроков:
-!servers или css_servers          - Показать список серверов с онлайном
-
-Для администраторов:
-css_reload_advert                 - Перезагрузить все 4 конфига без перезапуска
-css_announce_restart <секунды>    - Объявить рестарт (1-3600 сек)
-css_announce_update <секунды>     - Объявить обновление (1-3600 сек)
-
-═══════════════════════════════════════════════════════════════════════════════
-💡 Советы и устранение проблем
-═══════════════════════════════════════════════════════════════════════════════
-
-✓ ОСНОВНОЕ:
-1. Включите Debug=true в Settings.json для детальных логов
-2. После изменения конфигов используйте `css_reload_advert`
-3. Все переводы в Messages.json - одно место для всех языков!
-4. В Servers.json установите Enabled=true чтобы включить мониторинг
-
-⚠ НЕ РАБОТАЕТ !servers?
-1. Проверьте Servers.json: ""Enabled"": true
-2. Проверьте что есть серверы в ""List""
-3. Дождитесь 1-2 секунды после запуска (идёт начальный опрос)
-4. Смотрите Debug логи в консоли сервера
-5. Выполните css_reload_advert для перезагрузки
-
-⚠ НЕТ DEBUG ЛОГОВ?
-1. Settings.json: ""Debug"": true
-2. После изменения выполните: css_reload_advert
-3. Логи показываются только в консоли сервера (не в игре!)
-
-⚠ СЕРВЕРЫ ПОКАЗЫВАЮТ OFFLINE?
-1. Проверьте IP и порт сервера
-2. Увеличьте QueryTimeoutMs (например до 1000)
-3. Убедитесь что сервер доступен и отвечает на A2S запросы
-
-═══════════════════════════════════════════════════════════════════════════════
-📌 Важные замечания
-═══════════════════════════════════════════════════════════════════════════════
-
-• Для работы !servers ОБЯЗАТЕЛЬНО установите ""Enabled"": true в Servers.json
-• Запросы к серверам выполняются последовательно (может быть задержка 1-2 сек)
-• Кеш обновляется автоматически по интервалу или после команды !servers
-• Команда css_reload_advert перезагружает ВСЕ 4 конфига сразу
-• Изменения в Messages.json применяются сразу после css_reload_advert
-
-═══════════════════════════════════════════════════════════════════════════════
+Полное описание: https://github.com/Armaturix/NotifyMessages
+==============================================================================
 ";
 
         File.WriteAllText(readmePath, content, Encoding.UTF8);

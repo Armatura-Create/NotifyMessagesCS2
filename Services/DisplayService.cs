@@ -51,24 +51,29 @@ public sealed class DisplayService
         _logger.Debug($"[DisplayService] Config updated, Debug={_config.Debug}");
     }
 
-    /// Унифицированный вывод строки с обработкой локализации/цветов.
+    /// Унифицированный вывод строки с локализацией, подстановкой значений и рендером под канал.
     /// target == null — сообщение всем игрокам, иначе только указанному.
-    public void Print(HudDestination? destination, string message, CCSPlayerController? target = null)
+    /// values — контекстные значения ({PLAYERNAME}, {TEAM}, {SECONDS}, ...), подставляются
+    /// внутри ProcessMessage до рендера.
+    public void Print(MessageType messageType, string message, CCSPlayerController? target = null,
+        IReadOnlyDictionary<string, string>? values = null)
     {
         if (string.IsNullOrEmpty(message)) return;
+
+        var channel = ResolveChannel(messageType);
 
         if (target != null)
         {
             if (target is not { IsValid: true, IsBot: false }) return;
 
-            var processed = _messageProcessor.ProcessMessage(message, target.SteamID);
-            SendTo(target, destination, processed);
+            var processed = _messageProcessor.ProcessMessage(message, target.SteamID, channel, values);
+            SendTo(target, channel, processed);
 
             if (_config.Debug)
             {
                 var isoCode = _messageProcessor.GetIsoCodeBySteamId(target.SteamID) ?? _config.DefaultLang ?? "default";
                 _logger.Debug(
-                    $"[{DestinationName(destination)}] -> player '{target.PlayerName}' ({isoCode}): {TextFormatter.StripColorCodes(processed)}");
+                    $"[{channel}] -> player '{target.PlayerName}' ({isoCode}): {TextFormatter.StripColorCodes(processed)}");
             }
 
             return;
@@ -89,31 +94,38 @@ public sealed class DisplayService
 
             if (!processedMessages.TryGetValue(isoCode, out var processed))
             {
-                processed = _messageProcessor.ProcessMessage(message, player.SteamID);
+                processed = _messageProcessor.ProcessMessage(message, player.SteamID, channel, values);
                 processedMessages[isoCode] = processed;
             }
 
-            SendTo(player, destination, processed);
+            SendTo(player, channel, processed);
         }
 
         if (!_config.Debug) return;
 
-        var destinationType = DestinationName(destination);
         if (playerCount > 0)
         {
-            _logger.Debug($"[{destinationType}] -> {playerCount} player(s), {processedMessages.Count} language(s):");
+            _logger.Debug($"[{channel}] -> {playerCount} player(s), {processedMessages.Count} language(s):");
             foreach (var (isoCode, processed) in processedMessages)
                 _logger.Debug($"  [{isoCode}] {TextFormatter.StripColorCodes(processed)}");
         }
         else
         {
             // Игроков нет — показываем, как сообщение выглядело бы на языке по умолчанию
-            var processed = _messageProcessor.ProcessMessage(message, 0);
+            var processed = _messageProcessor.ProcessMessage(message, 0, channel, values);
             var defaultLang = _config.DefaultLang ?? "default";
             _logger.Debug(
-                $"[{destinationType}] -> No valid players online. Message [{defaultLang}]: {TextFormatter.StripColorCodes(processed)}");
+                $"[{channel}] -> No valid players online. Message [{defaultLang}]: {TextFormatter.StripColorCodes(processed)}");
         }
     }
+
+    /// Глобальный Settings.PrintToCenterHtml оставлен для совместимости со старыми конфигами:
+    /// он поднимает обычный центр до HTML. Решение принимается ДО рендера — иначе текст
+    /// был бы отрисован как plain, а отправлен в HTML-панель.
+    private MessageType ResolveChannel(MessageType messageType)
+        => messageType == MessageType.Center && _config.PrintToCenterHtml == true
+            ? MessageType.CenterHtml
+            : messageType;
 
     /// Вызывается каждый тик для поддержки HTML center.
     ///
@@ -191,11 +203,11 @@ public sealed class DisplayService
     /// Отправка одному игроку. Все PrintTo* бросают InvalidOperationException, если
     /// сущность стала невалидной между проверкой и вызовом (игрок вышел в этом же кадре).
     /// Ловим точечно: пропустить одного получателя дешевле, чем сорвать рассылку или тик.
-    private void SendTo(CCSPlayerController player, HudDestination? destination, string processed)
+    private void SendTo(CCSPlayerController player, MessageType channel, string processed)
     {
         try
         {
-            SendToCore(player, destination, processed);
+            SendToCore(player, channel, processed);
         }
         catch (InvalidOperationException)
         {
@@ -203,47 +215,27 @@ public sealed class DisplayService
         }
     }
 
-    private void SendToCore(CCSPlayerController player, HudDestination? destination, string processed)
+    private void SendToCore(CCSPlayerController player, MessageType channel, string processed)
     {
-        switch (destination)
+        switch (channel)
         {
-            case HudDestination.Chat:
+            case MessageType.Chat:
                 player.PrintToChat(TextFormatter.EnsureChatColorPrefix(processed));
                 break;
-            case HudDestination.Console:
+            case MessageType.Console:
                 player.PrintToConsole(processed);
                 break;
-            case HudDestination.Alert:
+            case MessageType.Alert:
                 player.PrintToCenterAlert(processed);
                 break;
+            case MessageType.CenterHtml:
+                SetHtmlPrintSettings(player, processed);
+                break;
             default:
-                if (_config.PrintToCenterHtml == true)
-                    SetHtmlPrintSettings(player, processed);
-                else
-                    player.PrintToCenter(processed);
+                player.PrintToCenter(processed);
                 break;
         }
     }
-
-    private static string DestinationName(HudDestination? destination) => destination switch
-    {
-        HudDestination.Chat => "CHAT",
-        HudDestination.Center => "CENTER",
-        HudDestination.Console => "CONSOLE",
-        HudDestination.Alert => "ALERT",
-        _ => "UNKNOWN"
-    };
-
-    /// Единый маппинг MessageType из конфига в канал вывода.
-    /// CenterHtml сознательно ложится в Center: HTML включается глобальным
-    /// Settings.PrintToCenterHtml, отдельного канала под него в HudDestination нет.
-    public static HudDestination ToHudDestination(MessageType type) => type switch
-    {
-        MessageType.Chat => HudDestination.Chat,
-        MessageType.Console => HudDestination.Console,
-        MessageType.Alert => HudDestination.Alert,
-        _ => HudDestination.Center
-    };
 
     private void SetHtmlPrintSettings(CCSPlayerController player, string message)
     {

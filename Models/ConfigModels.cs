@@ -22,6 +22,7 @@ public class Config
     public string? TitleAnnounceServers { get; set; }
     public RestartNotifyConfig? RestartNotify { get; set; }
     public Dictionary<string, string>? MapsName { get; init; }
+    public Dictionary<string, List<string>>? LanguageAliases { get; init; }
 
     // Сообщения из Messages.json
     public Dictionary<string, Dictionary<string, string>>? LanguageMessages { get; init; }
@@ -51,6 +52,11 @@ public class SettingsConfig
     public string? TitleAnnounceServers { get; set; }
     public RestartNotifyConfig? RestartNotify { get; set; }
     public Dictionary<string, string>? MapsName { get; set; }
+
+    /// Блок из Messages.json -> коды языков и стран, которые на него отображаются.
+    /// Например "RU": ["ru","kk","KZ","BY"] — игрок из Казахстана получит русский блок,
+    /// а не копию всех переводов под ключом "KZ".
+    public Dictionary<string, List<string>>? LanguageAliases { get; set; }
 }
 
 /// Оповещение игроков о предстоящем рестарте/обновлении.

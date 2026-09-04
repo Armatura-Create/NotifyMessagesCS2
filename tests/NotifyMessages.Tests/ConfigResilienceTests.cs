@@ -46,6 +46,49 @@ public sealed class ConfigResilienceTests : IDisposable
     }
 
     [Fact]
+    public void FirstRun_WritesJsonSchemasNextToConfigs()
+    {
+        new ConfigService(new RecordingLogger()).LoadOrCreate(_root);
+
+        foreach (var name in new[]
+                 { "Settings.schema.json", "Messages.schema.json", "Ads.schema.json", "Servers.schema.json" })
+            Assert.True(File.Exists(Path.Combine(ConfigDir, name)), $"{name} не создан");
+
+        // Ссылка на схему обязана попасть в сам конфиг, иначе редактор её не подхватит
+        var settings = File.ReadAllText(Path.Combine(ConfigDir, "Settings.json"));
+        Assert.Contains("\"$schema\": \"./Settings.schema.json\"", settings, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SchemaReference_IsIgnoredWhenReadingBack()
+    {
+        // Свойство "$schema" не описано в моделях: System.Text.Json обязан его пропустить,
+        // иначе ссылка на схему ломала бы чтение конфига.
+        WriteConfig("Settings.json",
+            "{ \"$schema\": \"./Settings.schema.json\", \"DefaultLang\": \"PL\" }");
+
+        var logger = new RecordingLogger();
+        var config = new ConfigService(logger).LoadOrCreate(_root);
+
+        Assert.Equal("PL", config.DefaultLang);
+        Assert.Empty(logger.Errors);
+    }
+
+    [Fact]
+    public void MessageType_ReadsBothStringAndNumber()
+    {
+        // Строковое имя — новый формат, число — старые конфиги, оба обязаны работать
+        WriteConfig("Settings.json",
+            "{ \"WelcomeMessage\": { \"MessageType\": \"CenterHtml\", \"Message\": \"hi\" }," +
+            "  \"RestartNotify\": { \"MessageType\": 4, \"DefaultMessage\": \"x\" } }");
+
+        var config = new ConfigService(new RecordingLogger()).LoadOrCreate(_root);
+
+        Assert.Equal(MessageType.CenterHtml, config.WelcomeMessage!.MessageType);
+        Assert.Equal(MessageType.Alert, config.RestartNotify!.MessageType);
+    }
+
+    [Fact]
     public void BrokenJson_DoesNotThrowAndReportsFileLineAndPosition()
     {
         // Пропущена запятая между полями — ошибка на третьей строке

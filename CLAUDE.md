@@ -57,6 +57,9 @@ Release-сборка (таргет `PackageRelease` в `.csproj`) расклад
 | `Events/NotifyMessages.PlayerEvents.cs` | connect/disconnect/authorized |
 | `Events/NotifyMessages.TeamEvents.cs` | смена команды |
 | `Commands/NotifyMessages.Commands.cs` | консольные команды |
+| `Commands/NotifyMessages.PreviewCommands.cs` | `css_nm_preview` и `css_nm_check` |
+| `Utils/TemplateDiagnostics.cs` | чистый анализатор шаблонов (неизвестные теги, дыры в переводах) |
+| `Utils/LanguageResolver.cs` | `LanguageIndex`: язык клиента → алиас → страна → `DefaultLang` |
 
 `Services/ConfigService.cs` — только логика загрузки и диагностики; значения по умолчанию
 и текст `README.txt` вынесены в `Services/ConfigService.Defaults.cs` (partial, ~630 строк
@@ -74,14 +77,31 @@ DI-контейнера нет: сервисы создаются вручную
 
 ```
 Config (шаблон с {ключами})
-  → MessageProcessor.ProcessMessage(msg, steamId)
-      подстановка LanguageMessages по ISO игрока (GeoIP) или DefaultLang
-      → ReplaceMessageTags  ({MAP} {TIME} {SERVERNAME} {PLAYERS} …, MapsName, \n → U+2029)
-      → TextFormatter.ReplaceColorTags  ({RED} → ChatColors.Red …)
-  → DisplayService.Print(destination, msg, target)  → Chat / Center / CenterHtml / Console
+  → DisplayService.Print(messageType, msg, target, values)
+      ResolveChannel: Center + PrintToCenterHtml=true → CenterHtml (совместимость)
+      → MessageProcessor.ProcessMessage(msg, steamId, channel, values)
+          1. ApplyLanguage    подстановка LanguageMessages по языку игрока
+          2. ApplyValues      {PLAYERNAME} {TEAM} {SECONDS} … (для CenterHtml — с экранированием)
+          3. ReplaceMessageTags  {MAP} {TIME} {SERVERNAME} {PLAYERS} …, MapsName
+          4. Render(channel)  ← у каждого канала своя грамматика
+      → PrintToChat / PrintToCenter / PrintToCenterHtml / PrintToConsole / PrintToCenterAlert
 ```
 
-`DisplayService.Print(dest, msg, target)`: `target == null` — всем, иначе только этому игроку.
+**Порядок частей 1–4 не произволен.** Значения подставляются ДО рендера, потому что сами содержат
+теги (`{TEAM}` = `"{RED}Terrorists{DEFAULT}"`). Пока подстановка шла после `ProcessMessage`,
+игроки видели в чате литеральное `{RED}Terrorists{DEFAULT}`. Новые контекстные значения
+добавлять только через параметр `values`, не через `.Replace` у вызывающего кода.
+
+`Render` — единственное место, где строка становится специфичной для канала:
+
+| Канал | Цвета | Перенос строки |
+|---|---|---|
+| `Chat` | `ChatColors` (управляющие байты) | `U+2029` |
+| `Center`, `Alert` | теги вырезаются: движок рисует plain-текст | `U+2029` |
+| `CenterHtml` | `<font color='#…'>`, размеры `{BIG}/{MEDIUM}/{SMALL}` | `<br>` |
+| `Console` | теги вырезаются | настоящий `\n` |
+
+`DisplayService.Print(messageType, msg, target, values)`: `target == null` — всем, иначе только этому игроку.
 При широковещательной рассылке результат кешируется **по ISO-коду языка**, а не по игроку:
 обработка идёт один раз на язык.
 
@@ -140,8 +160,16 @@ Config (шаблон с {ключами})
   это фикс конфликта префиксов тегов, порядок сортировки менять нельзя.
 - **Числа и даты форматируются через `CultureInfo.InvariantCulture`.** Без него сервер
   с арабской/турецкой локалью выдаёт игрокам другие цифры в `{PLAYERS}`, `{SERVER_PORT}` и т.п.
-- **Канал вывода задаётся `MessageType` в конфиге**, маппинг один на всех —
-  `DisplayService.ToHudDestination`. Свои switch по `MessageType` не плодить.
+- **Канал вывода — один тип на весь плагин: `MessageType`.** `HudDestination` из сигнатур убран
+  осознанно: две системы каналов приводили к тому, что `MessageType.CenterHtml` молча
+  превращался в обычный `Center`. Свои switch по `MessageType` плодить только в `Render`
+  и `SendToCore`.
+- **Подстановка значений — только через `values` в `ProcessMessage`.** `.Replace("{TEAM}", …)`
+  после `ProcessMessage` — тот самый баг, из-за которого игроки видели теги текстом.
+  Там же единственная точка экранирования: ник игрока — недоверенные данные, и в HTML-панель
+  он обязан попадать через `TextFormatter.EscapeHtml`.
+- **Цвета в HTML-центре — отдельная hex-таблица `TextFormatter.HtmlColorMap`.** Она НЕ заменяет
+  `ChatColors`: чат по-прежнему берёт коды из фреймворка, hex нужен только каналу `CenterHtml`.
 - **Все `PrintTo*` бросают `InvalidOperationException`, если сущность стала невалидной.**
   Поэтому `DisplayService.SendTo` и перерисовка HTML в `OnTick` обёрнуты точечным catch:
   пропустить одного получателя дешевле, чем сорвать рассылку или спамить исключением 64 раза
@@ -149,9 +177,15 @@ Config (шаблон с {ключами})
 - **Обработчики событий обёрнуты в `SafeEvent`** (`Events/NotifyMessages.Events.cs`).
   Исключение в нашем хендлере не должно всплывать во фреймворк и мешать другим плагинам.
   У `OnTick` отдельная обёртка: она гасит HTML-центр вместо того, чтобы логировать каждый тик.
-- **Состояние игрока чистится в `EventPlayerDisconnect` целиком** — сессия, гео-кеш
-  и кулдаун `css_servers`. Любой новый словарь, ключуемый по SteamID, надо добавить туда же,
-  иначе он растёт всё время жизни сервера.
+- **Состояние игрока чистится в `EventPlayerDisconnect` целиком** — сессия, язык клиента,
+  гео-кеш и кулдаун `css_servers`. Любой новый словарь, ключуемый по SteamID, надо добавить
+  туда же, иначе он растёт всё время жизни сервера.
+- **Язык игрока: клиент → страна → `DefaultLang`.** `player.GetLanguage()`
+  (`CounterStrikeSharp.API.Core.Translations`) снимается в `EventPlayerConnectFull` и живёт
+  в `SessionService`. GeoIP — фолбэк и источник `{COUNTRY}`/`{CITY}`, не более.
+  `LanguageIndex` кеширует `Config`, поэтому **обязан** пересобираться в `ReloadAdvertConfig`.
+  Словари языков в `MergeParts` пересобираются с `OrdinalIgnoreCase`: движок отдаёт `ru`,
+  в конфиге исторически `RU`.
 - **`SessionService` и кеш `ServerStatusService` — под `lock`.** К ним обращаются
   колбэки таймеров и продолжения A2S; блокировки не убирать.
 - `ServerStatusService.GetSnapshot()` отдаёт **копию** значений — наружу голый словарь
@@ -160,8 +194,23 @@ Config (шаблон с {ключами})
 ## Конфигурация
 
 Четыре файла в `csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/`:
-`Settings.json`, `Messages.json`, `Ads.json`, `Servers.json` (+ генерируемый `README.txt`).
+`Settings.json`, `Messages.json`, `Ads.json`, `Servers.json`.
 Если нет ни одного — `ConfigService.CreateDefaultConfigs` создаёт все четыре с примерами.
+
+Рядом лежат `*.schema.json` (`ConfigService.Schemas.cs`) и короткий `README.txt`. Оба
+**перезаписываются при каждой загрузке**: пока README писался только при первом запуске,
+после обновления плагина он описывал старую версию. Схема — основной способ объяснить конфиг:
+редактор с её поддержкой подсказывает поля и подсвечивает опечатки, и она не устаревает молча.
+Правишь модель конфига — правь схему в том же коммите.
+
+В сгенерированные конфиги первым свойством вставляется `"$schema"`. Оно не описано в моделях
+и `System.Text.Json` его игнорирует — это закреплено тестом, не убирать.
+
+Enum'ы читаются и пишутся строками (`JsonStringEnumConverter`): `"MessageType": "CenterHtml"`.
+Числа 0–4 продолжают читаться — старые конфиги не ломаются.
+
+Дефолты обезличены сознательно: плагин ставят чужие люди, и первый запуск не имеет права
+включить рекламу чужого Discord. Ссылки в примерах — заглушки (`discord.gg/CHANGE-ME`).
 
 Битый файл **не роняет плагин и не перезаписывается**: `ConfigService.LoadPart<T>` ловит
 `JsonException`, пишет в лог файл, строку и позицию ошибки, добавляет файл в `_failedFiles`,
@@ -173,9 +222,11 @@ Config (шаблон с {ключами})
 `AdsConfig`, `ServersConfig`) плюс общий `Config`, который `ConfigService.MergeParts`
 склеивает из частей.
 
-**Добавление новой настройки — четыре правки:** поле в частичный конфиг
+**Добавление новой настройки — пять правок:** поле в частичный конфиг
 (напр. `SettingsConfig`) → поле в `Config` → строка в `MergeParts` → значение
-в соответствующем `CreateDefault*`. Пропуск `MergeParts` — молчаливый `null` в рантайме.
+в соответствующем `CreateDefault*` → свойство в соответствующей схеме
+(`ConfigService.Schemas.cs`). Пропуск `MergeParts` — молчаливый `null` в рантайме;
+пропуск схемы — поле, о котором редактор промолчит.
 
 Тексты и переводы живут **только** в `Messages.json`; `Settings.json` ссылается на них
 ключами вида `{prefix}`, `{welcome_player}`. Не хардкодь русский/английский текст
@@ -198,6 +249,13 @@ Config (шаблон с {ключами})
 | `css_announce_update <sec>` | SERVER_ONLY | анонс обновления, 1–3600 |
 | `css_restart_notify <sec>` | SERVER_ONLY | точка интеграции с внешним апдейтером, 0–86400 |
 | `css_reload_advert` | `@css/root` | перезагрузка всех четырёх конфигов |
+| `css_nm_check` | `@css/root` | прогон всех шаблонов через `TemplateDiagnostics` |
+| `css_nm_preview <цель>` | `@css/root` | рендер шаблона себе: `welcome`, `ad <n>`, `servers`, `key <k>`, `raw <текст>` |
+
+`css_nm_preview` и `css_nm_check` существуют, чтобы петля «правка конфига → результат» была
+секундой, а не интервалом рекламы. Предпросмотр обязан идти через `DisplayService.Print` —
+любой обходной путь ничего не доказывает. Предпросмотр рекламы ходит по `ad.Messages` напрямую,
+а НЕ через `ad.NextMessages`: тот сдвигает боевую ротацию.
 
 `css_restart_notify` существует, чтобы внешний сервис обновления слал её вместо голого `say`:
 текст и цвет берутся из `Settings.RestartNotify` + `Messages.json`, поэтому каждый игрок видит

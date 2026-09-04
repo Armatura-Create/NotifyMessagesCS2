@@ -10,6 +10,10 @@ public sealed class SessionService
     private readonly Dictionary<ulong, Timer> _connectionTimers = new();
     private readonly HashSet<ulong> _fullyConnectedPlayers = new();
 
+    // Язык клиента (cl_language), снятый при подключении. Чистится в EventPlayerDisconnect
+    // вместе с остальным состоянием игрока — иначе словарь растёт всё время жизни сервера.
+    private readonly Dictionary<ulong, string> _languages = new();
+
     public void SetConnectionTimer(ulong steamId, Timer timer)
     {
         lock (_lock)
@@ -39,6 +43,32 @@ public sealed class SessionService
         lock (_lock)
         {
             _connectionTimers.Remove(steamId);
+        }
+    }
+
+    public void SetLanguage(ulong steamId, string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language)) return;
+
+        lock (_lock)
+        {
+            _languages[steamId] = language;
+        }
+    }
+
+    public string? GetLanguage(ulong steamId)
+    {
+        lock (_lock)
+        {
+            return _languages.TryGetValue(steamId, out var lang) ? lang : null;
+        }
+    }
+
+    public void RemoveLanguage(ulong steamId)
+    {
+        lock (_lock)
+        {
+            _languages.Remove(steamId);
         }
     }
 
@@ -73,6 +103,7 @@ public sealed class SessionService
             foreach (var kv in _connectionTimers) kv.Value.Kill();
             _connectionTimers.Clear();
             _fullyConnectedPlayers.Clear();
+            _languages.Clear();
         }
     }
 }

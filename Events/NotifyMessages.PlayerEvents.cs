@@ -1,9 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Utils;
 using CounterStrikeSharp.API.Modules.Entities;
+using CounterStrikeSharp.API.Core.Translations;
 
 namespace NotifyMessages;
 
@@ -48,18 +49,20 @@ public partial class NotifyMessages
             _geoIpService.TryGetPlayerIso(steamId, out var country);
             _geoIpService.TryGetPlayerCity(steamId, out var city);
 
+            var values = PlayerValues(playerName, country, city);
+
             foreach (var p in Utilities.GetPlayers()
                          .Where(u => u is { IsBot: false, IsValid: true } && u.SteamID != steamId))
             {
-                var message = _messageProcessor.GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID, playerName,
-                    country ?? "Unknown", city ?? "Unknown");
+                var template = _messageProcessor.GetRandomLocalizedMessage(Config.LeaveMessages, p.SteamID);
 
-                if (!string.IsNullOrEmpty(message))
-                    _displayService.Print(HudDestination.Chat, message, p);
+                if (!string.IsNullOrEmpty(template))
+                    _displayService.Print(MessageType.Chat, template, p, values);
             }
         }
 
         _sessionService.RemoveFullyConnected(steamId);
+        _sessionService.RemoveLanguage(steamId);
         _geoIpService.RemovePlayer(steamId);
         _serversCommandCooldown.Remove(steamId); // иначе словарь растёт всё время жизни сервера
 
@@ -97,6 +100,31 @@ public partial class NotifyMessages
         _geoIpService.UpdatePlayerCache(id.SteamId64, ip, defaultLang);
     }
 
+    /// Двухбуквенный код языка клиента ("ru", "en") или null.
+    /// Нативы бросают на невалидной сущности — один игрок не должен ронять обработчик.
+    private string? ReadClientLanguage(CCSPlayerController player)
+    {
+        try
+        {
+            return player.GetLanguage()?.TwoLetterISOLanguageName;
+        }
+        catch (Exception ex)
+        {
+            _logger.Debug($"[Lang] Не удалось прочитать язык клиента: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// Контекстные значения игрока для подстановки в шаблон.
+    /// Одна точка вместо россыпи .Replace по вызывающему коду.
+    private static Dictionary<string, string> PlayerValues(string playerName, string? country, string? city)
+        => new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["{PLAYERNAME}"] = playerName,
+            ["{COUNTRY}"] = country ?? "Unknown",
+            ["{CITY}"] = city ?? "Unknown"
+        };
+
     /// Возвращает подключённого игрока по SteamID или null.
     /// Только через Utilities.GetPlayers() — он фильтрует по IsValid и Connected.
     private static CCSPlayerController? FindConnectedPlayer(ulong steamId)
@@ -123,6 +151,9 @@ public partial class NotifyMessages
         if (Config.Debug)
             _logger.Info($"[EVENT] Player connected: {playerName} (SteamID: {steamId})");
 
+        // Язык снимаем здесь: движок уже знает cl_language игрока, а гадать по IP не нужно
+        _sessionService.SetLanguage(steamId, ReadClientLanguage(player));
+
         _sessionService.AddFullyConnected(steamId);
         _sessionService.TryKillAndRemoveConnectionTimer(steamId);
 
@@ -136,12 +167,13 @@ public partial class NotifyMessages
                 if (Config.Debug)
                     _logger.Info($"[GeoIP] {playerName} location: {city ?? "Unknown"}, {country ?? "Unknown"}");
 
+                var values = PlayerValues(playerName, country, city);
+
                 foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
                 {
-                    var message = _messageProcessor.GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID,
-                        playerName, country ?? "Unknown", city ?? "Unknown");
-                    if (!string.IsNullOrEmpty(message))
-                        _displayService.Print(HudDestination.Chat, message, p);
+                    var template = _messageProcessor.GetRandomLocalizedMessage(Config.JoinMessages, p.SteamID);
+                    if (!string.IsNullOrEmpty(template))
+                        _displayService.Print(MessageType.Chat, template, p, values);
                 }
             }
 
@@ -152,12 +184,8 @@ public partial class NotifyMessages
         if (welcome == null || string.IsNullOrEmpty(welcome.Message))
             return HookResult.Continue;
 
-        // Используем MessageProcessor для поддержки всех тегов, включая локализацию
-        var msg = _messageProcessor.ProcessMessage(welcome.Message, steamId)
-            .Replace("{PLAYERNAME}", playerName);
-
-        // Раньше учитывались только Chat/Center, а Console и Alert молча становились Center
-        var destination = DisplayService.ToHudDestination(welcome.MessageType);
+        var template = welcome.Message;
+        var welcomeValues = PlayerValues(playerName, null, null);
 
         // Контроллер через таймер НЕ проносим: за DisplayDelay игрок может выйти, объект
         // будет освобождён, а обращение к нему (даже к IsValid) — это чтение чужой памяти
@@ -165,7 +193,8 @@ public partial class NotifyMessages
         AddTimer(welcome.DisplayDelay, () =>
         {
             var target = FindConnectedPlayer(steamId);
-            if (target != null) _displayService.Print(destination, msg, target);
+            if (target != null)
+                _displayService.Print(welcome.MessageType, template, target, welcomeValues);
         });
 
         return HookResult.Continue;
