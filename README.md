@@ -519,4 +519,6 @@ terms. This product includes GeoLite2 data created by MaxMind, available from
 
 ## 💬 Support
 
-Issues and pull requests are welcome.
+[Issues](https://github.com/Armatura-Create/NotifyMessagesCS2/issues) and pull requests are welcome.
+
+Repository: https://github.com/Armatura-Create/NotifyMessagesCS2

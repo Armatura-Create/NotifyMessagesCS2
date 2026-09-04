@@ -117,9 +117,6 @@ css_reload_advert         // применить все четыре файла
   "MapsName": {
     "de_dust2": "Dust 2",
     "de_mirage": "Mirage",
-      "PL": "na serwer gry {RED}Armaturix",
-      "DE": "auf den Spieleserver {RED}Armaturix"
-    },
     "de_inferno": "Inferno",
     "de_nuke": "Nuke",
     "de_overpass": "Overpass"
@@ -698,4 +695,6 @@ GNU General Public License, опубликованной Free Software Foundatio
 1. Проверьте логи сервера (включите `Debug: true`)
 2. Убедитесь, что файлы GeoIP на месте
 3. Проверьте права на команды (@css/root для reload)
-4. Создайте Issue на GitHub с подробным описанием
+4. Создайте [Issue](https://github.com/Armatura-Create/NotifyMessagesCS2/issues) с подробным описанием
+
+Репозиторий: https://github.com/Armatura-Create/NotifyMessagesCS2
