@@ -347,14 +347,13 @@ css_reload_advert            // Reload every config file
 
 ## 🔌 Updater integration
 
-An external update service (for example [CS2-Basefiles-Egg](https://github.com/Armatura/CS2-Basefiles-Egg))
-usually notifies players with a plain `say <text>` — no colors, no translations, one language for
-everyone.
+An external update service usually notifies players with a plain `say <text>` — no colors,
+no translations, one language for everyone.
 
 Replace `say` in the updater's config with `css_restart_notify <seconds>`, and the texts will be
 pulled from `Messages.json` in each player's own language, colored per `Settings.json`.
 
-Example for `service/configs/message.json`:
+Example of an updater config:
 
 ```json
 {
@@ -495,16 +494,6 @@ exist and duplicating every translation per country is pointless. GeoIP still pr
   the main thread
 - A2S replies are only accepted from the queried address, and every read is bounds-checked
 - `Debug` logging is off by default because it writes SteamIDs, names and geo data to the log
-
----
-
-## 🐛 Changelog
-
-See [Русская версия](README.ru.md#-исправленные-баги-v210) for the detailed 2.1.0 changelog.
-
-**2.1.0 highlights:** correct CS2 color codes, UTF-8 server names, non-blocking A2S polling,
-`css_restart_notify` for updater integration, `Alert` output channel, .NET 10 / CounterStrikeSharp
-1.0.369+, test suite and release automation.
 
 ---
 
