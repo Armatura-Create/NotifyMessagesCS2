@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Net;
+using MaxMind.Db;
 using MaxMind.GeoIP2;
 
 namespace NotifyMessages;
@@ -192,8 +193,19 @@ public sealed class GeoIpService : IDisposable
         var size = new System.IO.FileInfo(path).Length;
         _logger.Debug($"[GEO] 2/5 открываю {fileName}, размер {size} байт");
 
-        var reader = new DatabaseReader(path);
-        _logger.Debug($"[GEO] 2/5 {fileName} открыта");
+        // FileAccessMode.Memory, а НЕ дефолтный MemoryMapped.
+        //
+        // По умолчанию MaxMind.Db отображает .mmdb в память (MemoryMappedFile.CreateFromFile
+        // + сырые указатели через SafeMemoryMappedViewHandle) и читает её страничными отказами.
+        // Внутри игрового процесса это фатально: том Docker/overlayfs или движок со своими
+        // обработчиками сигналов превращают страничный отказ в SIGBUS, а он убивает процесс
+        // мгновенно — без .NET-исключения, без стека, без строки в логе.
+        // Реальный инцидент: сервер умирал ровно на "[GEO] 2/5 открываю GeoLite2-Country.mmdb",
+        // при полностью целом файле.
+        // Memory читает базу обычным файловым вводом в byte[]: цена — RAM размером с базу
+        // (Country ~7.8 МБ, City ~58.8 МБ), зато обычным исключением вместо смерти процесса.
+        var reader = new DatabaseReader(path, FileAccessMode.Memory);
+        _logger.Debug($"[GEO] 2/5 {fileName} открыта (режим Memory, {size} байт в RAM)");
 
         return reader;
     }
