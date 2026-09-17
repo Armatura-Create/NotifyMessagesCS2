@@ -2,14 +2,29 @@
 
 [English](README.md) | **Русский**
 
+[![CI CSSharp](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-cssharp.yml/badge.svg)](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-cssharp.yml)
+[![CI SwiftlyS2](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-swiftly.yml/badge.svg)](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-swiftly.yml)
+[![Release](https://img.shields.io/github/v/release/Armatura-Create/NotifyMessagesCS2?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Armatura-Create/NotifyMessagesCS2/total?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
 [![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-%E2%89%A5%201.0.369-1f6feb?logo=steam)](https://github.com/roflmuffin/CounterStrikeSharp)
-[![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-2ea44f)](#)
-[![Downloads](https://img.shields.io/github/downloads/Armatura-Create/NotifyMessagesCS2/total?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases)
-[![Release](https://img.shields.io/badge/Release-ZIP%20package-success)](#build-и-упаковка)
-[![GeoLite2](https://img.shields.io/badge/GeoLite2-Auto--download-009688)](#geolite2-данные-автозагрузка-при-сборке)
+[![SwiftlyS2](https://img.shields.io/badge/SwiftlyS2-%E2%89%A5%201.4.9-8957e5)](https://github.com/swiftly-solution/swiftlys2)
+[![Platforms](https://img.shields.io/badge/Platforms-Linux%20%7C%20Windows-2ea44f)](#-установка)
+[![GeoLite2](https://img.shields.io/badge/GeoLite2-bundled%20%2F%20auto--download-009688)](#-geolite2-данные-автозагрузка-при-сборке)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue)](LICENSE)
 
-Универсальный плагин для CounterStrikeSharp/CS2 для уведомлений и рекламы: сообщения в чат, центр экрана (в т.ч. HTML), консоль, а также анонсы других серверов через A2S-запросы.
+Уведомления и реклама для серверов CS2: чат, центр экрана (включая HTML-панель), alert и консоль,
+приветствия, сообщения о смене команды и живой список ваших других серверов через A2S — каждое
+сообщение на языке игрока.
+
+Реализовано **дважды**, под две платформы плагинов. Кода у них общего нет — общая
+**конфигурация**: `Settings.json`, `Messages.json`, `Ads.json` и `Servers.json` переносятся
+между платформами без правок.
+
+| Платформа | Требования | Архив | Куда ставится |
+|---|---|---|---|
+| **CounterStrikeSharp** | CSSharp ≥ 1.0.369 (а значит и Metamod:Source) | `NotifyMessages_cssharp_<версия>.zip` | `addons/counterstrikesharp/plugins/NotifyMessages/` |
+| **SwiftlyS2** | SwiftlyS2 ≥ 1.4.9, Metamod **не нужен** | `NotifyMessages_swiftly_<версия>.zip` | `addons/swiftlys2/plugins/NotifyMessages/` |
 
 ## ✨ Особенности
 
@@ -25,17 +40,17 @@
 
 ## 📦 Установка
 
-> **Требуется CounterStrikeSharp v1.0.369 или новее.** v1.0.369 — первая версия на .NET 10,
-> а плагин собран под `net10.0` и на более старых сборках CSSharp не загрузится.
->
+1. Скачайте архив под свою платформу из
+   [последнего релиза](https://github.com/Armatura-Create/NotifyMessagesCS2/releases/latest)
+   и распакуйте в корень игрового сервера. Структура каталогов уже внутри, вместе с базами GeoLite2.
+
+<details>
+<summary>CounterStrikeSharp</summary>
+
+> Требуется **CounterStrikeSharp v1.0.369 или новее** — первая версия на .NET 10.
 > Плагин компилируется именно против 1.0.369 — минимальной поддерживаемой версии, — поэтому сама
 > сборка доказывает, что более новых API в нём нет. На любой свежей 1.0.x он тоже работает.
 
-1. Установите [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) (>= v1.0.369) и Metamod:Source
-2. Скачайте собранный архив `NotifyMessages.zip` из релизов или соберите проект сами
-3. Распакуйте содержимое архива в корень игрового сервера
-
-В архиве уже готова структура:
 ```
 addons/counterstrikesharp/plugins/NotifyMessages/
 ├── NotifyMessages.dll
@@ -46,14 +61,44 @@ addons/counterstrikesharp/plugins/NotifyMessages/
 ├── GeoLite2-Country.mmdb
 └── GeoLite2-City.mmdb
 ```
+</details>
 
-4. Запустите сервер — плагин автоматически создаст конфигурационные файлы
+<details>
+<summary>SwiftlyS2</summary>
+
+> Требуется **SwiftlyS2 v1.4.9 или новее**. SwiftlyS2 — самостоятельный лоадер (подключается
+> через `gameinfo.gi`), Metamod:Source не нужен. В архиве **нет** сборок самого SwiftlyS2 —
+> их предоставляет хост.
+
+```
+addons/swiftlys2/plugins/NotifyMessages/
+├── NotifyMessages.dll
+├── NotifyMessages.pdb
+├── NotifyMessages.deps.json
+├── MaxMind.GeoIP2.dll
+├── MaxMind.Db.dll
+├── GeoLite2-Country.mmdb
+└── GeoLite2-City.mmdb
+```
+
+Админские команды требуют право `notifymessages.admin` (система прав самого SwiftlyS2);
+`sw_restart_notify` принимается только из консоли сервера.
+</details>
+
+2. Запустите сервер — плагин автоматически создаст конфигурационные файлы.
 
 ## ⚙️ Конфигурация
 
-Плагин использует **модульную систему конфигурации** — 4 отдельных JSON-файла в папке:
+Плагин использует **модульную систему конфигурации** — 4 отдельных JSON-файла. Файлы одинаковы
+для обеих платформ, различается только каталог:
+
+| Платформа | Каталог конфигов |
+|---|---|
+| CounterStrikeSharp | `csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/` |
+| SwiftlyS2 | `csgo/addons/swiftlys2/configs/plugins/NotifyMessages/` |
+
 ```
-csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/
+configs/plugins/NotifyMessages/
 ├── Settings.json    # Основные настройки плагина
 ├── Messages.json    # Все переводы и текстовые сообщения
 ├── Ads.json         # Рекламные объявления
@@ -77,6 +122,9 @@ css_nm_preview welcome    // показать приветствие себе п
 css_nm_preview ad 1       // показать первый блок рекламы
 css_reload_advert         // применить все четыре файла
 ```
+
+На SwiftlyS2 те же команды идут с префиксом `sw_` вместо `css_` (`sw_nm_check`,
+`sw_nm_preview`, `sw_reload_advert`).
 
 **Битый конфиг не роняет плагин.** Если файл не разобрался, в лог пишется имя файла, строка
 и позиция ошибки, для этого файла берутся значения по умолчанию, а остальные три читаются
@@ -438,27 +486,24 @@ css_reload_advert         // применить все четыре файла
 
 ## 🎮 Команды
 
-### Для игроков:
+Команды одинаковы на обеих платформах, различается только префикс.
 
-| Команда | Описание |
-|---------|----------|
-| `css_servers` | Показать список серверов из кеша |
+| Действие | CounterStrikeSharp | SwiftlyS2 |
+|---|---|---|
+| Показать список серверов из кеша (кулдаун 10 с на игрока) | `css_servers` (игрок) | `sw_servers` (игрок) |
+| Отправить сообщение `RestartNotify` для отсечки, 0–86400 с | `css_restart_notify <сек>` (консоль сервера) | `sw_restart_notify <сек>` (консоль сервера) |
+| Перезагрузить все 4 конфига без перезапуска | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) |
+| Проверить все шаблоны: неизвестные теги, дыры в переводах | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) |
+| Показать шаблон себе прямо сейчас: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) |
 
-**Особенность:** После показа списка запускается фоновое обновление кеша, чтобы следующий запрос показал актуальные данные.
-
-### Для администраторов:
-
-| Команда | Права | Описание |
-|---------|-------|----------|
-| `css_restart_notify <сек>` | SERVER_ONLY | Оповестить о рестарте через N секунд (0-86400) |
-| `css_reload_advert` | @css/root | Перезагрузить все 4 конфигурации без перезапуска |
-| `css_nm_check` | @css/root | Проверить все шаблоны: неизвестные теги, дыры в переводах |
-| `css_nm_preview <цель>` | @css/root | Показать шаблон себе прямо сейчас: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` |
+После показа списка серверов запускается фоновое обновление кеша, чтобы следующий запрос
+показал актуальные данные.
 
 #### Примеры:
 
 ```
 css_restart_notify 300       // Оповещение из RestartNotify для отсечки 300 сек
+css_nm_preview ad 1          // увидеть первый блок рекламы прямо сейчас
 css_reload_advert            // Перезагрузить все конфиги
 ```
 
@@ -469,8 +514,9 @@ css_reload_advert            // Перезагрузить все конфиги
 Внешний сервис обновления обычно шлёт игрокам голый `say <текст>` — без цветов, без переводов,
 одним языком для всех.
 
-Замените в конфиге апдейтера команду `say` на `css_restart_notify <секунды>` — и тексты
-подтянутся из `Messages.json` на языке каждого игрока, с цветами из `Settings.json`.
+Замените в конфиге апдейтера команду `say` на `css_restart_notify <секунды>` (на SwiftlyS2 —
+`sw_restart_notify`) — и тексты подтянутся из `Messages.json` на языке каждого игрока,
+с цветами из `Settings.json`.
 
 Пример конфига апдейтера:
 
@@ -536,45 +582,51 @@ css_reload_advert            // Перезагрузить все конфиги
 
 ## 🔧 Build и упаковка
 
-### Сборка релиза:
-
-Нужен **.NET 10 SDK**.
+Нужен **.NET 10 SDK**. Каждая цель собирается сама по себе:
 
 ```bash
-dotnet build -c Release
-```
+export PATH="$HOME/.dotnet:$PATH"
 
-Готовый архив: `bin/Release/net10.0/NotifyMessages.zip`
+cd cssharp && ./build.sh      # тесты + NotifyMessages_cssharp_<версия>.zip в bin/Release/net10.0/
+cd swiftly && ./build.sh      # тесты + NotifyMessages_swiftly_<версия>.zip
+```
 
 ### Тесты:
 
 ```bash
-dotnet test
+dotnet test cssharp/NotifyMessages.sln
+dotnet test swiftly/NotifyMessages.sln
 ```
 
 Покрыты чистые части, которые ломались чаще всего: разбор недоверенных A2S-пакетов
-(усечённые и мусорные данные), цветовые теги, извлечение IP (включая IPv6),
-ротация рекламных блоков, выбор шаблона для `css_restart_notify`, а также страховка от того,
-чтобы `MinimumApiVersion` не уехал выше версии CSSharp, против которой идёт сборка.
+(усечённые и мусорные данные), санация чужих имён серверов, цветовые теги во всех каналах
+вывода, причуда движка с цветом в начале сообщения, извлечение IP (включая IPv6), ротация
+рекламных блоков, диагностика шаблонов, определение языка, выбор шаблона для `restart_notify`,
+а также страховки от того, чтобы заявленная минимальная версия API не уехала выше версии
+фреймворка, против которой идёт сборка.
+
+Тесты Swiftly-цели, которым нужна `SwiftlyS2.CS2.dll`, выполняются только в x64-процессе —
+эта сборка собрана только под x64, потому что выделенный сервер CS2 другим не бывает.
+На arm64-машине они пропускаются с внятной причиной, в CI выполняются все.
 
 ### CI и релизы:
 
-- `.github/workflows/ci.yml` — сборка и тесты на каждый push в `main` и PR
-- `.github/workflows/release.yml` — по тегу `v*`: сборка → **тесты** → упаковка →
-  GitHub Release с прикреплённым `NotifyMessages.zip`
+- `.github/workflows/ci-cssharp.yml`, `ci-swiftly.yml` — сборка и тесты с фильтром по путям:
+  правка одной цели не пересобирает другую
+- `.github/workflows/release.yml` — по тегу `v*`: одна задача `version`, затем обе цели
+  параллельно (сборка → **тесты** → упаковка → проверка архива), затем GitHub Release с обоими
+  архивами и описанием, собранным из коммитов (см. [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ```bash
-git tag v2.1.1 && git push origin v2.1.1
+git tag v2.3.0 && git push origin v2.3.0
 ```
 
-Версию задаёт **тег** и только он: workflow вычисляет её из имени тега (`v2.1.1` → `2.1.1`),
-передаёт в сборку, и плагин сообщает её серверу как `ModuleVersion` — в исходниках поднимать
-ничего не нужно. Затем workflow проверяет, что версия действительно попала в собранную DLL.
+Версию задаёт **тег** и только он: workflow вычисляет её из имени тега (`v2.3.0` → `2.3.0`),
+передаёт в обе сборки, и каждый плагин сообщает её серверу — в исходниках поднимать ничего
+не нужно. Затем workflow проверяет, что версия действительно попала в каждую собранную DLL.
 
 Релиз не публикуется, если тесты красные. Секрет `MAXMIND_LICENSE_KEY` в репозитории
-не обязателен — без него в архив попадут закоммиченные базы из `GeoIP/`.
-
-Внутри архива уже правильная структура `addons/counterstrikesharp/plugins/NotifyMessages/` с файлами плагина и зависимостями. Архив можно просто распаковать в корень сервера.
+не обязателен — без него в архивы попадут закоммиченные базы из `GeoIP/`.
 
 ---
 
@@ -650,16 +702,29 @@ dotnet build -c Release -p:GeoLiteLicenseKey=ВАШ_КЛЮЧ
 
 ### Совместимость
 
-- Минимальная версия CounterStrikeSharp API: 339
-- .NET 8.0
+- CounterStrikeSharp **>= 1.0.369** (`MinimumApiVersion` 369) — или SwiftlyS2 **>= 1.4.9**
+  (`MinimumAPIVersion` 1.4.9); .NET 10 в обоих случаях
 - Windows и Linux
+
+### Почему не меню SwiftlyS2 для панели в центре
+
+В SwiftlyS2 есть встроенная система экранных меню. Для вывода она сознательно не используется:
+меню — эксклюзивная интерактивная поверхность, одно активное меню на игрока, и реклама закрыла бы
+меню, открытое другим плагином, а в серверном режиме ввода `wasd` ещё и перехватила бы клавиши
+движения. Под капотом оно рисуется той же HTML-панелью центра экрана, что и наш канал
+`CenterHtml`, — так что внешний вид (заголовок, размеры, цвета) доступен и без этих побочных
+эффектов.
 
 ### Безопасность
 
-- Все входные данные команд валидируются
-- Ограничения на время рестарта/обновления (1-3600 сек)
-- Thread-safe операции во всех критических секциях
-- Защита от переполнения при A2S-запросах
+- `css_servers` / `sw_servers` доступны любому игроку, поэтому ограничены кулдауном на игрока
+  и никогда не блокируют главный поток
+- A2S-ответы принимаются только с опрашиваемого адреса, каждое чтение проверяет границы буфера
+- Текст, пришедший от чужого сервера (имена карт), санируется перед подстановкой в шаблон:
+  фигурные скобки, управляющие символы и переносы строк убираются, длина ограничена — чужой
+  админ не может вставить в ваш чат цветовые теги или многострочный спам
+- Ники игроков, подставляемые в HTML-панель, экранируются
+- `Debug` выключен по умолчанию: он пишет в лог SteamID, ники и гео игроков
 
 ---
 
@@ -694,7 +759,7 @@ GNU General Public License, опубликованной Free Software Foundatio
 Если у вас возникли вопросы или проблемы:
 1. Проверьте логи сервера (включите `Debug: true`)
 2. Убедитесь, что файлы GeoIP на месте
-3. Проверьте права на команды (@css/root для reload)
+3. Проверьте права на команды (`@css/root` в CSSharp, `notifymessages.admin` в SwiftlyS2)
 4. Создайте [Issue](https://github.com/Armatura-Create/NotifyMessagesCS2/issues) с подробным описанием
 
 Репозиторий: https://github.com/Armatura-Create/NotifyMessagesCS2

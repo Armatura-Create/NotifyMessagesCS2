@@ -1,7 +1,30 @@
 # CLAUDE.md
 
-Плагин **NotifyMessages** для CounterStrikeSharp (CS2): уведомления, реклама, приветствия,
-локализация по GeoIP и мониторинг чужих серверов через A2S.
+**NotifyMessages** — уведомления, реклама, приветствия, локализация и мониторинг чужих
+серверов через A2S для CS2. Реализован **дважды**, под две платформы плагинов:
+
+| Каталог | Платформа | Metamod нужен? |
+|---|---|---|
+| `cssharp/` | CounterStrikeSharp ≥ 1.0.369 | да (CSSharp сам — плагин MM:S) |
+| `swiftly/` | SwiftlyS2 ≥ 1.4.9 | **нет**, свой лоадер через `gameinfo.gi` |
+
+**Код продублирован между целями сознательно** (решение владельца: цели развиваются
+независимо). Раскладка файлов одинаковая, чтобы цели можно было сравнивать глазами.
+Общее у них ровно одно:
+
+> **Формат конфигов — контракт.** `Settings.json`, `Messages.json`, `Ads.json`, `Servers.json`
+> переносятся между платформами без правок. Меняешь модель конфига, схему, дефолты или
+> семантику тега — меняй в обеих целях или ни в одной. Компилятор об этом не напомнит,
+> только этот файл.
+
+Общее по репозиторию: `GeoIP/` (одна копия баз GeoLite2), `LICENSE`, `README*.md`,
+`CONTRIBUTING.md`, `.github/`. Репозиторий: <https://github.com/Armatura-Create/NotifyMessagesCS2>.
+
+Файл `.mcp.json` в корне подключает MCP-сервер документации SwiftlyS2
+(`https://swiftlys2.net/api/mcp`): `apidocs_lookup`, `docs_search`, `gameevent_lookup` и т.д.
+Для вопросов по API SwiftlyS2 — сначала туда, а не в память.
+
+## Цель `cssharp/` — CounterStrikeSharp
 
 - `net10.0`, namespace `NotifyMessages`, `[MinimumApiVersion(369)]`
 - Зависимости: `CounterStrikeSharp.API` `1.0.369` (пин, не `*`), `MaxMind.GeoIP2` `5.3.0`
@@ -14,18 +37,57 @@
   `CounterStrikeSharp.API` таргетит `net10.0`. Официальные docs всё ещё показывают `net8.0` — они отстали.
 - SDK стоит в `~/.dotnet` (не в PATH по умолчанию): `export PATH="$HOME/.dotnet:$PATH"`
 
+## Цель `swiftly/` — SwiftlyS2
+
+- `net10.0`, тот же namespace, `SwiftlyS2.CS2` запинен в `swiftly/Swiftly.props`
+- SwiftlyS2 — **не надстройка над Metamod**: он подключается строкой `Game csgo/addons/swiftlys2`
+  в `gameinfo.gi`. Это альтернативный лоадер, а не аддон.
+- То же правило минимальной версии: `MinimumAPIVersion` в `PluginMetadata` обязан равняться
+  версии пакета (`ApiVersionTests`). Версия живёт в `Swiftly.props`, потому что нужна и плагину,
+  и тестам, а два разъехавшихся литерала превратили бы тест из проверки инварианта в проверку
+  внимательности.
+- **`PluginMetadata` — атрибут**, а аргументы атрибута обязаны быть константами. MSBuild генерирует
+  `PluginVersion.g.cs` (таргет `GeneratePluginVersion`) из `<Version>`, так что правило «версию
+  руками не поднимаем» сохраняется.
+- **`SwiftlyS2.CS2.dll` — только x64** (выделенный сервер CS2 другим не бывает). На arm64-машине
+  она не грузится, поэтому тесты, упоминающие её типы, пропускаются через `SwiftlyRuntime.Available`.
+  `Skip.IfNot` в начале тела **не спасает**: JIT разрешает все типы метода до первой строки.
+  Такие вызовы живут во вложенных классах `Bound`, а чистые помощники — в `PluginText`.
+  CI (x64) не пропускает ничего.
+- Сборки SwiftlyS2 идут с `ExcludeAssets="runtime"`: их предоставляет хост, а своя копия рядом
+  с плагином — второй `ISwiftlyCore` в процессе. `release.yml` проверяет, что их нет в архиве.
+- Каталог конфигов приходит целиком из `Core.Configuration.BasePath`; `.mmdb` лежат в `Core.PluginPath`.
+- Команды регистрируются вручную (`Core.Command.RegisterCommand`, `registerRaw: false` → префикс
+  `sw_`) и **снимаются в `Unload` по Guid**, иначе после hot reload висят дважды. Хуки событий —
+  так же, по Guid. Админское право — строка `notifymessages.admin`; `sw_restart_notify` принимается
+  только из консоли (аналог `SERVER_ONLY`).
+- `ICommandContext.Args` — только параметры, без имени команды (оно в `CommandName`).
+- **HTML-панель держит сам фреймворк**: `IPlayer.SendCenterHTML(html, миллисекунды)`. Ни слотов,
+  ни `OnTick`, ни `User` здесь нет, а `Settings.ShowHtmlWhenDead` не действует — пауза на время
+  смерти требует перерисовки тиками.
+- Таймеры — `Core.Scheduler.DelayAndRepeatBySeconds` / `DelayBySeconds`, отменяются через
+  `CancellationTokenSource`; возврат в главный поток из фона — `Core.Scheduler.NextTick`.
+- Цвета чата в `TextFormatter` выписаны байтами и **сверены с `ChatColors` CSSharp** (рефлексией
+  с пакета 1.0.369): это коды движка. При расхождении верна cssharp-версия.
+
 ## Команды
 
 ```bash
-dotnet build                 # обычная сборка
-dotnet build -c Release      # + упаковка в bin/Release/net10.0/NotifyMessages.zip
-dotnet test                  # xUnit-тесты чистой логики
+export PATH="$HOME/.dotnet:$PATH"
+
+cd cssharp && ./build.sh          # restore -> тесты -> Release -> NotifyMessages_cssharp_<version>.zip
+cd swiftly && ./build.sh 2.3.0    # то же, с явной версией
+
+dotnet test cssharp/NotifyMessages.sln
+dotnet test swiftly/NotifyMessages.sln
 ```
 
-Тесты лежат в `tests/NotifyMessages.Tests/` и покрывают то, что уже ломалось: разбор
-недоверенных A2S-пакетов, цветовые теги, `GeoIpService.ExtractIp`, ротацию рекламы,
-`RestartNotifyConfig.ResolveTemplate`. Внутренности открыты тестам через
-`Properties/AssemblyInfo.cs` (`InternalsVisibleTo`) — публичный API ради тестов не расширяем.
+Тесты лежат в `<цель>/tests/` и покрывают то, что уже ломалось: разбор недоверенных
+A2S-пакетов, санацию чужих строк, цветовые теги во всех каналах, префикс цвета в чате,
+`GeoIpService.ExtractIp`, ротацию рекламы, диагностику шаблонов, `LanguageIndex`,
+`RestartNotifyConfig.ResolveTemplate`, реальное открытие закоммиченной `.mmdb`. Внутренности
+открыты тестам через `Properties/AssemblyInfo.cs` (`InternalsVisibleTo`) — публичный API
+ради тестов не расширяем.
 
 Каталог `tests/**` исключён из компиляции плагина в `.csproj` — он лежит внутри дерева
 проекта, и без `<Compile Remove>` SDK-глоб затянул бы его в саму сборку плагина.
@@ -34,44 +96,60 @@ dotnet test                  # xUnit-тесты чистой логики
 держится на нуле предупреждений — именно они поймали форматирование чисел по локали сервера.
 `CA1716` и `CA1859` заглушены осознанно в `.csproj`.
 
-CI: `.github/workflows/ci.yml` (push/PR) и `release.yml` (тег `v*` → сборка, тесты, zip,
-GitHub Release). Релиз не публикуется на красных тестах.
+## CI/CD
 
-Release-сборка (таргет `PackageRelease` в `.csproj`) раскладывает DLL и `.mmdb`
-в `addons/counterstrikesharp/plugins/NotifyMessages/` и зипует — архив распаковывается
-прямо в корень игрового сервера.
+По workflow на цель, каждый с фильтром по путям (`ci-cssharp.yml`, `ci-swiftly.yml`): правка
+одной цели не гоняет сборку другой. Обратная сторона: PR, не трогающий цель, не даёт по ней
+статуса — такой чек нельзя делать обязательным в branch protection.
 
-Таргет `DownloadGeoLite2` качает свежие базы MaxMind, если задан `MAXMIND_LICENSE_KEY`
-(env) или свойство `GeoLiteLicenseKey`. Без ключа — молчаливый фолбэк на закоммиченные
-файлы в `GeoIP/`. **`Directory.Build.props` с реальным ключом в git не попадает**
+`release.yml` срабатывает на тег `v*` (или вручную). Версия вычисляется **один раз** в задаче
+`version` и раздаётся обеим целям: два плагина под одним тегом обязаны представляться одним
+номером. Каждая цель: build → test → package → проверка архива (нужные файлы есть, конфигов
+нет, у swiftly нет сборок SwiftlyS2, версия зашита в DLL) → артефакт. Задача `publish` собирает
+описание релиза из коммитов между предыдущим тегом и новым (Conventional Commits, см.
+`CONTRIBUTING.md`; коммит не по форме уходит в «Other», а не теряется) и публикует оба архива.
+Ей нужен `fetch-depth: 0` — без тегов нечего диффать.
+
+Красные тесты — релиза нет.
+
+Таргет `DownloadGeoLite2` в обоих `.csproj` качает свежие базы MaxMind, если задан
+`MAXMIND_LICENSE_KEY` (env) или свойство `GeoLiteLicenseKey`. Без ключа — молчаливый фолбэк на
+закоммиченные файлы в `../GeoIP/`. **`Directory.Build.props` с реальным ключом в git не попадает**
 (см. `Directory.Build.props.example` и `.gitignore`).
 
 ## Архитектура
 
-`NotifyMessages` — `partial class : BasePlugin`, разнесённый по файлам:
+Обе цели используют одну раскладку. `NotifyMessages` — `partial class : BasePlugin`,
+разнесённый по файлам:
 
 | Файл | Что в нём |
 |---|---|
-| `NotifyMessages.cs` | `Load`/`Unload`, ручная сборка всех сервисов |
-| `Events/NotifyMessages.Events.cs` | единственная точка регистрации хендлеров (`RegisterEvents`) |
-| `Events/NotifyMessages.PlayerEvents.cs` | connect/disconnect/authorized |
+| `NotifyMessages.cs` / `NotifyMessagesPlugin.cs` | `Load`/`Unload`, ручная сборка сервисов, фабрики таймеров |
+| `Events/NotifyMessages.Events.cs` | единственная точка регистрации хендлеров (`RegisterEvents`) + `SafeEvent` |
+| `Events/NotifyMessages.PlayerEvents.cs` | connect/disconnect, гео, язык, трассировка `[JOIN]`/`[LEAVE]` |
 | `Events/NotifyMessages.TeamEvents.cs` | смена команды |
-| `Commands/NotifyMessages.Commands.cs` | консольные команды |
-| `Commands/NotifyMessages.PreviewCommands.cs` | `css_nm_preview` и `css_nm_check` |
+| `Commands/NotifyMessages.Commands.cs` | `*_servers`, `*_restart_notify`, `*_reload_advert` |
+| `Commands/NotifyMessages.PreviewCommands.cs` | `*_nm_preview` и `*_nm_check` |
+| `Services/IServerInfoSource.cs` + `EngineServerInfo.cs` | факты о сервере для `{MAP}` `{PLAYERS}` …: интерфейс общий, реализация — на фреймворке |
+| `Services/MessageProcessor.cs` | локализация, значения, системные теги, рендер под канал — **без фреймворка** |
+| `Services/DisplayService.cs` | доставка в чат/центр/HTML/консоль/alert — **на фреймворке** |
+| `Services/ServerStatusService.cs`, `AdvertisementService.cs`, `SessionService.cs` | **без фреймворка**: таймер и главный поток приходят делегатами |
 | `Utils/TemplateDiagnostics.cs` | чистый анализатор шаблонов (неизвестные теги, дыры в переводах) |
 | `Utils/LanguageResolver.cs` | `LanguageIndex`: язык клиента → алиас → страна → `DefaultLang` |
 
+**Что зависит от фреймворка, а что нет — граница проведена намеренно.** Сервисы без
+фреймворка идентичны в обеих целях и проверяются тестами на любой машине; в них таймер —
+это `Func<float, Action, Action>` («интервал, действие → как остановить»), главный поток —
+`Action<Action>`, рассылка — `Action<MessageType, string>`. Не тащи `BasePlugin`, `IPlayer`,
+`CCSPlayerController` или `Timer` внутрь `Services/` дальше `DisplayService` и `EngineServerInfo`.
+
 `Services/ConfigService.cs` — только логика загрузки и диагностики; значения по умолчанию
-и текст `README.txt` вынесены в `Services/ConfigService.Defaults.cs` (partial, ~630 строк
-данных). Правишь дефолты — иди туда, они применяются лишь при первом запуске.
+и текст `README.txt` вынесены в `Services/ConfigService.Defaults.cs` (partial, ~650 строк
+данных), схемы — в `ConfigService.Schemas.cs`. Правишь дефолты — иди туда, и в обе цели.
 
 DI-контейнера нет: сервисы создаются вручную в `Load()` в фиксированном порядке
-(logger → config → geoip → messageProcessor → session → display → serverStatus → advert).
-Порядок значим — каждый следующий получает предыдущие в конструктор.
-
-Сервисы не наследуют `BasePlugin` и потому **не имеют доступа к `AddTimer`**: таймер-фабрика
-передаётся в них делегатом из `Load()`. Сохраняй этот приём при добавлении новых сервисов,
-не тащи `BasePlugin` внутрь `Services/`.
+(logger → config → geoip → session → languageIndex → serverInfo → messageProcessor → display →
+serverStatus → advert). Порядок значим — каждый следующий получает предыдущие в конструктор.
 
 ### Поток сообщения
 
@@ -125,8 +203,18 @@ Config (шаблон с {ключами})
   (реклама, опрос серверов, восстановление после hot reload) запускаются через
   `SafeRun(...)` в `NotifyMessages.cs`; конфиг читается через `LoadConfigSafely()`,
   который в худшем случае отдаёт пустой `Config` — все секции проверяются на null.
-- **Цветовые коды берутся из `ChatColors` CounterStrikeSharp.** Свою таблицу заводить нельзя:
-  ровно из-за неё половина тегов до 2.1.0 давала не тот цвет.
+- **Цветовые коды в `cssharp/` берутся из `ChatColors` CounterStrikeSharp.** Свою таблицу
+  заводить нельзя: ровно из-за неё половина тегов до 2.1.0 давала не тот цвет. В `swiftly/`
+  та же таблица выписана байтами и сверена с `ChatColors` — это копия, а не свой источник.
+- **Строка для чата всегда приводится к `"\x01 " + текст`** (`EnsureChatColorPrefix`): движок
+  не применяет цвет, стоящий в самом начале сообщения, и CSSharp в своём `ChatMenu` тоже пишет
+  пробел перед первым цветом. Ранний выход «уже начинается с кода» — тот самый баг, из-за которого
+  `{LIGHTBLUE}Server` выходил белым.
+- **Текст, пришедший по сети от чужого сервера, санируется** (`ServerStatusService.SanitizeRemoteText`):
+  скобки, управляющие символы, `U+2029` вырезаются, длина ≤ 64. Иначе имя карты `{prefix}{RED}…`
+  с чужого сервера красило бы наш чат и давало многострочный спам.
+- **`MapsName` подставляется через `MatchEvaluator`, а не строкой замены**: в строке замены
+  `Regex.Replace` символ `$` — спецсимвол, и красивое имя карты с долларом превращалось в мусор.
 - **`css_reload_advert` пересоздаёт часть сервисов.** `MessageProcessor`,
   `ServerStatusService`, `AdvertisementService` создаются заново через фабрики
   `CreateServerStatusService()` / `CreateAdvertisementService()` в `NotifyMessages.cs`;
@@ -136,7 +224,9 @@ Config (шаблон с {ключами})
 - **`css_servers` доступна любому игроку** и дёргает сеть — кулдаун
   (`ServersCommandCooldownSeconds`) и guard от параллельных проходов (`_queryInFlight`)
   снимать нельзя.
-- **Игрока получаем ТОЛЬКО через `Utilities.GetPlayers()`.** `Utilities.GetPlayerFromSlot(slot)`
+- **Игрока получаем ТОЛЬКО через `Utilities.GetPlayers()` / `Core.PlayerManager` или из события.**
+  В `swiftly/` — `ev.UserIdPlayer`, `GetAllPlayers()`, `GetPlayerFromSteamId()`; по номеру слота
+  игрока не добываем нигде. Дальше — история из `cssharp/`. `Utilities.GetPlayerFromSlot(slot)`
   внутри делает `new CCSPlayerController(EntitySystem.GetEntityByIndex(slot + 1))` **без проверки
   типа сущности**: для освобождённого или переиспользованного индекса вернётся чужая энтити,
   и чтение её полей (`PawnIsAlive`, `SteamID`) уходит по неверным смещениям — сервер падает
@@ -166,7 +256,7 @@ Config (шаблон с {ключами})
   Реальный инцидент: welcome-сообщение с `DisplayDelay` держало `CCSPlayerController` 5 секунд.
 - **Логи из фонового потока — через `Server.NextFrame`** (`BgDebug`/`BgError` в
   `ServerStatusService`). Логгер пишет в консоль, которую перехватывает сам CSSharp.
-- **HTML-центр требует перерисовки каждый тик.** `DisplayService.OnTick` шлёт
+- **HTML-центр требует перерисовки каждый тик (только `cssharp/`).** `DisplayService.OnTick` шлёт
   `PrintToCenterHtml` пока не истечёт `HtmlCenterDuration` (null = 5 с); состояние — массив
   по слотам, размер от `Server.MaxPlayers`. Убрать `OnTick` = HTML-сообщения исчезнут мгновенно.
   `_htmlActiveCount` — счётчик активных слотов, ради него `OnTick` выходит мгновенно
@@ -268,13 +358,13 @@ Enum'ы читаются и пишутся строками (`JsonStringEnumConv
 
 ## Команды плагина
 
-| Команда | Права | Действие |
+| Действие | CounterStrikeSharp | SwiftlyS2 |
 |---|---|---|
-| `css_servers` | CLIENT_ONLY | список серверов из кеша + фоновое обновление, кулдаун 10 с на игрока |
-| `css_restart_notify <sec>` | SERVER_ONLY | точка интеграции с внешним апдейтером, 0–86400 |
-| `css_reload_advert` | `@css/root` | перезагрузка всех четырёх конфигов |
-| `css_nm_check` | `@css/root` | прогон всех шаблонов через `TemplateDiagnostics` |
-| `css_nm_preview <цель>` | `@css/root` | рендер шаблона себе: `welcome`, `ad <n>`, `servers`, `key <k>`, `raw <текст>` |
+| список серверов из кеша + фоновое обновление, кулдаун 10 с на игрока | `css_servers` (CLIENT_ONLY) | `sw_servers` (игрок) |
+| точка интеграции с внешним апдейтером, 0–86400 | `css_restart_notify <sec>` (SERVER_ONLY) | `sw_restart_notify <sec>` (только консоль) |
+| перезагрузка всех четырёх конфигов | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) |
+| прогон всех шаблонов через `TemplateDiagnostics` | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) |
+| рендер шаблона себе: `welcome`, `ad <n>`, `servers`, `key <k>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) |
 
 `css_nm_preview` и `css_nm_check` существуют, чтобы петля «правка конфига → результат» была
 секундой, а не интервалом рекламы. Предпросмотр обязан идти через `DisplayService.Print` —
@@ -290,17 +380,28 @@ Enum'ы читаются и пишутся строками (`JsonStringEnumConv
 сообщение на своём языке. Выбор шаблона — `RestartNotifyConfig.ResolveTemplate`: точная отсечка
 или `DefaultMessage`; «ближайший» порог намеренно не подбирается.
 
-## Меню в CounterStrikeSharp (разведка 2026-09-03)
+## Меню: почему не используем (разведка 2026-09-17)
 
-Во фреймворке 1.0.369+ встроены только `ChatMenu`, `CenterHtmlMenu`, `ConsoleMenu`
-(через `MenuManager.OpenChatMenu/OpenCenterHtmlMenu/OpenConsoleMenu`).
-`ScreenMenu`, `WasdMenu`, `PanoramaVote` — это **сторонние** пакеты (CS2ScreenMenuAPI,
-CS2MenuManager), в самом CSSharp их нет. Примитив `CPointWorldText` есть — на нём сторонние
-библиотеки и строят «экранные» меню.
+**CounterStrikeSharp 1.0.369–1.0.374**: встроены только `ChatMenu`, `CenterHtmlMenu`, `ConsoleMenu`.
+`ScreenMenu`, `WasdMenu`, `PanoramaVote` — сторонние пакеты (CS2MenuManager, CS2ScreenMenuAPI),
+то есть ещё один плагин на каждом сервере. В 1.0.374 появился `CustomHudLayout API` — потребует
+поднять минимум с 369 до 374 и отрезать серверы между ними; пока не трогаем.
 
-Для рекламы меню не используем сознательно: меню перехватывает ввод игрока и требует закрытия,
-то есть навязчиво посреди раунда. Пассивные каналы — `Chat`, `Center`, `CenterHtml`, `Alert`,
-`Console`.
+**SwiftlyS2 1.4.9**: встроенный `Core.MenusAPI` (`CreateBuilder()`, `TextMenuOption`,
+`AutoCloseAfter`, `FreezePlayer`, `HideFooter`, размеры и цвета через `Design`). Для вывода
+сознательно не используется, и вот почему — это факты, а не осторожность:
+
+1. **Одно активное меню на игрока** (`GetCurrentMenu` / `CloseActiveMenu`). Реклама по таймеру
+   открыла бы нашу «панель» поверх открытого меню магазина/админки другого плагина — и закрыла его.
+2. **Режим ввода серверный** (`core.jsonc` → `InputMode: "button" | "wasd"`), не наш. В `wasd`
+   открытое меню перехватывает W/S/E посреди раунда.
+3. Это список: `MaxVisibleItems` ≤ 5, пагинация, футер с подсказками. Баннера из него не выходит.
+4. Под капотом — та же HTML-панель центра экрана (`MenuOptionTextSize.ToCssClass()` отдаёт те же
+   `fontSize-*`). Красота меню — вёрстка, и она доступна в нашем `CenterHtml` напрямую.
+
+Панель CS2 понимает классы `fontSize-xs/s/sm/m/ml/l/xl` (снято со сборки SwiftlyS2). Наши
+`{BIG}`/`{MEDIUM}`/`{SMALL}` → `fontSize-l/m/sm`. Пассивные каналы — `Chat`, `Center`,
+`CenterHtml`, `Alert`, `Console`; интерактивных нет и не будет.
 
 ## Версии
 
@@ -309,9 +410,12 @@ CS2MenuManager), в самом CSSharp их нет. Примитив `CPointWorl
 `FormatModuleVersion` в `NotifyMessages.cs`, хвост `+sha` от SourceLink отрезается).
 
 Источник версии:
-- локальная сборка — `<Version>` в `.csproj` (сейчас `2.1.1-fix`), просто база для разработки;
-- релиз — **тег**: `release.yml` вычисляет `VERSION=${TAG#v}` и передаёт `-p:Version=` в сборку
-  и упаковку, а затем проверяет, что версия реально попала в DLL.
+- локальная сборка — `<Version>` в `.csproj` каждой цели (сейчас `2.3.0`), просто база для разработки;
+- релиз — **тег**: `release.yml` вычисляет `VERSION=${TAG#v}` один раз и передаёт `-p:Version=`
+  в обе сборки, а затем проверяет, что версия реально попала в каждую DLL.
+
+В `swiftly/` `ModuleVersion` заменяет `PluginMetadata.Version` — константа, которую генерирует
+MSBuild (`GeneratedVersion.Value`); чистый резолв живёт в `PluginText`.
 
 Реальный инцидент, из-за которого так сделано: релиз `v2.1.1` уехал с `ModuleVersion => "v2.1.0"`,
 потому что число надо было помнить поднять в двух местах. Возвращать литерал нельзя —
