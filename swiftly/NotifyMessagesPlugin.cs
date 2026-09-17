@@ -110,12 +110,28 @@ public sealed partial class NotifyMessages : BasePlugin
         try { _geoIpService?.Dispose(); } catch (Exception) { /* выгружаемся в любом случае */ }
     }
 
-    /// Язык игрока: сначала выбор самого игрока (cl_language), потом география, потом дефолт.
+    /// Язык игрока: сначала язык интерфейса игры (cl_language), потом география, потом дефолт.
     /// Гео остаётся источником {COUNTRY}/{CITY} — там оно и уместно.
-    private string? ResolveLanguage(ulong steamId) => _languageIndex.Resolve(
-        _sessionService.GetLanguage(steamId),
-        _geoIpService.GetIsoForSteamId(steamId),
-        Config.DefaultLang);
+    ///
+    /// Если на входе язык снять не удалось (userinfo ещё пуст), дочитываем его в момент
+    /// первого сообщения: к этому времени клиент уже всё прислал. Один поиск игрока
+    /// по SteamID на первое сообщение, дальше — кеш сессии.
+    private string? ResolveLanguage(ulong steamId)
+    {
+        var language = _sessionService.GetLanguage(steamId);
+
+        if (language == null && steamId != 0)
+        {
+            var player = FindConnectedPlayer(steamId);
+            if (player != null)
+            {
+                language = ReadClientLanguage(player);
+                _sessionService.SetLanguage(steamId, language);
+            }
+        }
+
+        return _languageIndex.Resolve(language, _geoIpService.GetIsoForSteamId(steamId), Config.DefaultLang);
+    }
 
     /// Загрузка конфигурации, которая не роняет плагин.
     /// Пустой Config безопасен: все подсистемы проверяют свои секции на null и просто молчат.

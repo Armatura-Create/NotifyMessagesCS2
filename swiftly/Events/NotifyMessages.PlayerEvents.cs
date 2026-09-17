@@ -99,24 +99,32 @@ public sealed partial class NotifyMessages
         _geoIpService.UpdatePlayerCache(steamId, ip, defaultLang);
     }
 
-    /// Двухбуквенный код языка клиента ("ru", "en") или null.
-    /// PlayerLanguage.Value — код вида "en", "ru", "pt-BR"; берём часть до дефиса,
-    /// как и в версии для CSSharp (TwoLetterISOLanguageName).
+    /// Двухбуквенный код языка ИНТЕРФЕЙСА ИГРЫ игрока ("ru", "en") или null — как в SourceMod.
+    ///
+    /// Источник — userinfo-квар cl_language, прочитанный синхронно через GetClientConvarValue
+    /// и переведённый в код таблицей SteamLanguage. НЕ player.PlayerLanguage: SwiftlyS2
+    /// строит его из того же квара, но асинхронно (QueryClientConvar при OnClientPutInServer)
+    /// и до прихода ответа отдаёт язык СЕРВЕРА из core.jsonc. player_connect_full успевает
+    /// раньше ответа, и снимок на входе получал серверный "en" у всех игроков.
+    ///
+    /// PlayerLanguage остаётся фолбэком на случай, если userinfo пуст: к моменту, когда
+    /// он понадобится (приветствие через DisplayDelay), ответ на квар уже пришёл.
     private string? ReadClientLanguage(IPlayer player)
     {
         try
         {
-            var value = player.PlayerLanguage.Value;
-            if (string.IsNullOrEmpty(value))
+            var raw = player.GetClientConvarValue("cl_language");
+            var language = SteamLanguage.ToCode(raw);
+            if (language != null)
             {
-                _logger.Debug("[JOIN] 5/8 язык клиента: неизвестен");
-                return null;
+                _logger.Debug($"[JOIN] 5/8 язык интерфейса игры: {raw} -> {language}");
+                return language;
             }
 
-            var dash = value.IndexOf('-', StringComparison.Ordinal);
-            var language = dash > 0 ? value[..dash] : value;
-            _logger.Debug($"[JOIN] 5/8 язык клиента: {language}");
-            return language;
+            var fallback = SteamLanguage.ToCode(player.PlayerLanguage.Value);
+            _logger.Debug($"[JOIN] 5/8 cl_language пуст/неизвестен ({raw ?? "null"}), " +
+                          $"PlayerLanguage SwiftlyS2: {fallback ?? "неизвестен"}");
+            return fallback;
         }
         catch (Exception ex)
         {

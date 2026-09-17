@@ -508,8 +508,9 @@ and put your key there. That file is gitignored — **never commit a real key**.
 
 ### Localization
 
-Resolution order: **the player's own game language** (`cl_language`, which the engine already
-knows) → **country by IP** (MaxMind GeoLite2) → `DefaultLang`. Both are matched
+Resolution order: **the player's own game interface language** (`cl_language`, the same
+source SourceMod uses; on SwiftlyS2 it is read synchronously from the client's userinfo
+and mapped Steam name → code) → **country by IP** (MaxMind GeoLite2) → `DefaultLang`. Both are matched
 case-insensitively, so a client reporting `ru` finds a block named `RU`.
 
 The engine's answer is used first because it is a choice the player made; an IP is a guess about

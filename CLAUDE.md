@@ -291,9 +291,16 @@ Config (шаблон с {ключами})
 - **Состояние игрока чистится в `EventPlayerDisconnect` целиком** — сессия, язык клиента,
   гео-кеш и кулдаун `css_servers`. Любой новый словарь, ключуемый по SteamID, надо добавить
   туда же, иначе он растёт всё время жизни сервера.
-- **Язык игрока: клиент → страна → `DefaultLang`.** `player.GetLanguage()`
-  (`CounterStrikeSharp.API.Core.Translations`) снимается в `EventPlayerConnectFull` и живёт
-  в `SessionService`. GeoIP — фолбэк и источник `{COUNTRY}`/`{CITY}`, не более.
+- **Язык игрока: клиент → страна → `DefaultLang`.** В `cssharp/` — `player.GetLanguage()`
+  (`CounterStrikeSharp.API.Core.Translations`), снимается в `EventPlayerConnectFull` и живёт
+  в `SessionService`. В `swiftly/` — **userinfo-квар `cl_language`** через
+  `player.GetClientConvarValue("cl_language")` + таблица `SteamLanguage` (копия
+  `l_mLanguages` из SwiftlyS2), как в SourceMod. **Не `player.PlayerLanguage`**: SwiftlyS2
+  строит его из того же квара, но асинхронно (`QueryClientConvar` при `OnClientPutInServer`)
+  и до ответа отдаёт язык *сервера* из `core.jsonc` — `player_connect_full` успевает раньше,
+  и снимок на входе получал серверный «en» у всех. Если на входе квар пуст, `ResolveLanguage`
+  дочитывает его при первом сообщении и кеширует. GeoIP — фолбэк и источник
+  `{COUNTRY}`/`{CITY}`, не более.
   `LanguageIndex` кеширует `Config`, поэтому **обязан** пересобираться в `ReloadAdvertConfig`.
   Словари языков в `MergeParts` пересобираются с `OrdinalIgnoreCase`: движок отдаёт `ru`,
   в конфиге исторически `RU`.
