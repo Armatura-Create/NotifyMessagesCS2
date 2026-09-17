@@ -28,7 +28,8 @@ between platforms unchanged.
 
 ## ✨ Features
 
-- 🌍 **Multi-language** — automatic language detection via GeoIP (5+ languages)
+- 🔇 **No noise** — side switches at halftime and re-connects after a map change are not announced
+- 🌍 **Multi-language** — every message in the player's own language: game interface language first, GeoIP as fallback
 - 🎨 **Colored messages** — 20+ color tags mapped straight to CounterStrikeSharp `ChatColors`
 - 📱 **Multiple output channels** — chat, center, HTML center, alert, console
 - 🔄 **Modular configuration** — four separate config files

@@ -17,6 +17,13 @@ public sealed class SessionService
     // вместе с остальным состоянием игрока — иначе словарь растёт всё время жизни сервера.
     private readonly Dictionary<ulong, string> _languages = new();
 
+    // Игроки, вернувшиеся на сервер после смены карты, и момент возврата.
+    // В CS2 при смене карты player_disconnect не приходит, а player_connect_full приходит
+    // заново: второй connect_full у уже fully-connected игрока — это возврат, а не заход.
+    // Его первое попадание в команду на новой карте — тоже не событие, и метка живёт
+    // до этого момента (или до истечения срока, чтобы не съесть настоящий переход позже).
+    private readonly Dictionary<ulong, DateTime> _returning = new();
+
     public void SetConnectionTimer(ulong steamId, Action stopTimer)
     {
         lock (_lock)
@@ -75,6 +82,25 @@ public sealed class SessionService
         }
     }
 
+    public void MarkReturning(ulong steamId, DateTime now)
+    {
+        lock (_lock)
+        {
+            _returning[steamId] = now;
+        }
+    }
+
+    /// Снимает метку возврата и говорит, была ли она свежей. Метка снимается в любом
+    /// случае: просроченная не должна ждать следующего перехода.
+    public bool TakeReturning(ulong steamId, DateTime now, TimeSpan maxAge)
+    {
+        lock (_lock)
+        {
+            if (!_returning.Remove(steamId, out var markedAt)) return false;
+            return now - markedAt <= maxAge;
+        }
+    }
+
     public void AddFullyConnected(ulong steamId)
     {
         lock (_lock)
@@ -96,6 +122,7 @@ public sealed class SessionService
         lock (_lock)
         {
             _fullyConnectedPlayers.Remove(steamId);
+            _returning.Remove(steamId);
         }
     }
 
@@ -107,6 +134,7 @@ public sealed class SessionService
             _connectionTimers.Clear();
             _fullyConnectedPlayers.Clear();
             _languages.Clear();
+            _returning.Clear();
         }
     }
 }

@@ -207,6 +207,8 @@ public sealed partial class NotifyMessages : BasePlugin
             try
             {
                 CachePlayerGeo(player, player.SteamID);
+                // Иначе первая смена карты после hot reload анонсировала бы всех как новых
+                _sessionService.AddFullyConnected(player.SteamID);
             }
             catch (Exception ex)
             {

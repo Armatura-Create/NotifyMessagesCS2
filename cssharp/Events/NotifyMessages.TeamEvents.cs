@@ -9,6 +9,16 @@ namespace NotifyMessages;
 /// Игровые события, связанные со сменой команд
 public partial class NotifyMessages
 {
+    /// Сколько после возврата на новую карту первое попадание в команду считается
+    /// не событием. Дольше — игрок сидел в спектаторах и его выход в команду настоящий.
+    private static readonly TimeSpan ReturningGrace = TimeSpan.FromSeconds(90);
+
+    // Переходы T<->CT, накопленные за кадр: анонс откладывается на один кадр, чтобы
+    // отличить смену сторон (все сразу) от перехода одного игрока. Через границу кадра
+    // уходят только строки и числа — контроллер не переживает кадр.
+    private readonly List<(string Name, int OldTeam, int NewTeam)> _pendingTeamChanges = new();
+    private bool _teamFlushScheduled;
+
     private HookResult EventPlayerTeamChange(EventPlayerTeam ev, GameEventInfo info)
     {
         var player = ev.Userid;
@@ -16,26 +26,64 @@ public partial class NotifyMessages
 
         var newTeam = ev.Team;
         var oldTeam = ev.Oldteam;
+        var playerName = player.PlayerName;
+        var steamId = player.SteamID;
 
         if (Config.Debug)
-        {
-            var oldTeamName = GetTeamName(oldTeam);
-            var newTeamName = GetTeamName(newTeam);
-            _logger.Info($"[EVENT] {player.PlayerName} team change: {oldTeamName} -> {newTeamName}");
-        }
+            _logger.Info($"[EVENT] {playerName} team change: {GetTeamName(oldTeam)} -> {GetTeamName(newTeam)} " +
+                         $"(silent={ev.Silent}, disconnect={ev.Disconnect})");
 
-        if (oldTeam == 0 && (newTeam == 1 || newTeam == 2 || newTeam == 3))
+        // Уход с сервера — не смена команды
+        if (ev.Disconnect || newTeam == 0 || newTeam == oldTeam) return HookResult.Continue;
+
+        // Движок сам молчит в чате про эту смену (halftime-свап, тихие переводы плагинами) — и мы молчим
+        if (ev.Silent)
         {
-            AnnouncePlayerTeamJoin(player, newTeam);
+            _logger.Debug($"[TEAM] {playerName}: silent-смена, анонс пропущен");
             return HookResult.Continue;
         }
 
-        if (newTeam != 0 && newTeam != oldTeam)
+        // Первое попадание в команду после смены карты — возврат, а не событие
+        if (oldTeam == 0 && _sessionService.TakeReturning(steamId, DateTime.UtcNow, ReturningGrace))
         {
-            AnnounceTeamChange(player, oldTeam, newTeam);
+            _logger.Debug($"[TEAM] {playerName}: команда после смены карты, анонс пропущен");
+            return HookResult.Continue;
+        }
+
+        if (oldTeam == 0)
+        {
+            AnnouncePlayerTeamJoin(playerName, newTeam);
+            return HookResult.Continue;
+        }
+
+        // Переход между командами анонсируем через кадр — пачкой, чтобы отсеять смену сторон
+        _pendingTeamChanges.Add((playerName, oldTeam, newTeam));
+
+        if (!_teamFlushScheduled)
+        {
+            _teamFlushScheduled = true;
+            Server.NextFrame(FlushTeamChanges);
         }
 
         return HookResult.Continue;
+    }
+
+    private void FlushTeamChanges()
+    {
+        _teamFlushScheduled = false;
+
+        var batch = _pendingTeamChanges.ToArray();
+        _pendingTeamChanges.Clear();
+        if (batch.Length == 0) return;
+
+        if (TeamSwap.IsMassSwap(batch.Select(c => (c.OldTeam, c.NewTeam)).ToArray()))
+        {
+            _logger.Debug($"[TEAM] смена сторон ({batch.Length} игроков за кадр), анонс пропущен");
+            return;
+        }
+
+        foreach (var (name, oldTeam, newTeam) in batch)
+            AnnounceTeamChange(name, oldTeam, newTeam);
     }
 
     private static string GetTeamName(int team)
@@ -50,66 +98,47 @@ public partial class NotifyMessages
         };
     }
 
-    private void AnnounceTeamChange(CCSPlayerController player, int oldTeam, int newTeam)
+    private static string ColoredTeam(int team) => team switch
+    {
+        2 => "{RED}Terrorists{DEFAULT}",
+        3 => "{BLUE}Counter-Terrorists{DEFAULT}",
+        _ => "{GREY}Spectators{DEFAULT}"
+    };
+
+    private void AnnounceTeamChange(string playerName, int oldTeam, int newTeam)
     {
         if (string.IsNullOrEmpty(Config.ChangeTeamMessage)) return;
-
-        var playerName = player.PlayerName;
-
-        var teamName = newTeam switch
-        {
-            2 => "{RED}Terrorists{DEFAULT}",
-            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
-            _ => "{GREY}Spectators{DEFAULT}"
-        };
-
-        var oldTeamName = oldTeam switch
-        {
-            2 => "{RED}Terrorists{DEFAULT}",
-            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
-            _ => "{GREY}Spectators{DEFAULT}"
-        };
 
         // Значения уходят в ProcessMessage и подставляются ДО рендера. Раньше они
         // подставлялись после него, и игрок видел в чате литеральное «{RED}Terrorists{DEFAULT}».
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["{PLAYERNAME}"] = playerName,
-            ["{TEAM}"] = teamName,
-            ["{OLD_TEAM}"] = oldTeamName
+            ["{TEAM}"] = ColoredTeam(newTeam),
+            ["{OLD_TEAM}"] = ColoredTeam(oldTeam)
         };
 
-        foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
-        {
-            // Используем steamID каждого игрока для локализации сообщения
-            _displayService.Print(MessageType.Chat, Config.ChangeTeamMessage, p, values);
-        }
+        Broadcast(Config.ChangeTeamMessage, values);
     }
 
-    private void AnnouncePlayerTeamJoin(CCSPlayerController player, int team)
+    private void AnnouncePlayerTeamJoin(string playerName, int team)
     {
         if (string.IsNullOrEmpty(Config.JoinTeamMessage)) return;
-
-        var playerName = player.PlayerName;
-
-        var teamName = team switch
-        {
-            2 => "{RED}Terrorists{DEFAULT}",
-            3 => "{BLUE}Counter-Terrorists{DEFAULT}",
-            _ => "{GREY}Spectators{DEFAULT}"
-        };
 
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["{PLAYERNAME}"] = playerName,
-            ["{TEAM}"] = teamName
+            ["{TEAM}"] = ColoredTeam(team)
         };
 
+        Broadcast(Config.JoinTeamMessage, values);
+    }
+
+    /// Каждому игроку — на его языке: локализация идёт по SteamID получателя.
+    private void Broadcast(string template, IReadOnlyDictionary<string, string> values)
+    {
         foreach (var p in Utilities.GetPlayers().Where(u => u is { IsBot: false, IsValid: true }))
-        {
-            // Используем steamID каждого игрока для локализации сообщения
-            _displayService.Print(MessageType.Chat, Config.JoinTeamMessage, p, values);
-        }
+            _displayService.Print(MessageType.Chat, template, p, values);
     }
 
     private static HookResult EventPlayerTeamChangePre(EventPlayerTeam ev, GameEventInfo info)

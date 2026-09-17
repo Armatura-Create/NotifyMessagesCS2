@@ -92,6 +92,8 @@ public partial class NotifyMessages : BasePlugin
             {
                 if (player.IsBot || !player.IsValid) continue;
                 CachePlayerGeo(player, player.SteamID);
+                // Иначе первая смена карты после hot reload анонсировала бы всех как новых
+                _sessionService.AddFullyConnected(player.SteamID);
             }
         });
     }

@@ -184,9 +184,24 @@ public sealed partial class NotifyMessages
         _logger.Debug("[JOIN] 5/8 читаю язык клиента (PlayerLanguage)");
         _sessionService.SetLanguage(steamId, ReadClientLanguage(player));
 
-        _logger.Debug("[JOIN] 6/8 регистрирую сессию");
+        // В CS2 при смене карты player_disconnect не приходит, а player_connect_full приходит
+        // заново. Игрок, который уже числится fully-connected, — это возврат на новую карту,
+        // а не заход: без анонса, без приветствия, и его первое попадание в команду —
+        // тоже не событие (см. TeamEvents). Гео и язык при этом обновлены выше.
+        var returning = _sessionService.IsFullyConnected(steamId);
+
+        _logger.Debug(returning
+            ? "[JOIN] 6/8 игрок уже был на сервере — возврат после смены карты"
+            : "[JOIN] 6/8 регистрирую сессию");
         _sessionService.AddFullyConnected(steamId);
         _sessionService.TryKillAndRemoveConnectionTimer(steamId);
+
+        if (returning)
+        {
+            _sessionService.MarkReturning(steamId, DateTime.UtcNow);
+            _logger.Debug("[JOIN] 8/8 смена карты: анонс входа и приветствие пропущены, ConnectFull завершён");
+            return HookResult.Continue;
+        }
 
         _logger.Debug($"[JOIN] 7/8 ставлю таймер анонса входа ({JoinAnnounceDelaySeconds} с)");
 

@@ -1,14 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using SwiftlyS2.Shared.GameEventDefinitions;
 using SwiftlyS2.Shared.Misc;
-using SwiftlyS2.Shared.Players;
 
 namespace NotifyMessages;
 
 /// Игровые события, связанные со сменой команд
 public sealed partial class NotifyMessages
 {
+    /// Сколько после возврата на новую карту первое попадание в команду считается
+    /// не событием. Дольше — игрок сидел в спектаторах и его выход в команду настоящий.
+    private static readonly TimeSpan ReturningGrace = TimeSpan.FromSeconds(90);
+
+    // Переходы T<->CT, накопленные за кадр: анонс откладывается на один кадр, чтобы
+    // отличить смену сторон (все сразу) от перехода одного игрока. Через границу кадра
+    // уходят только строки и числа — IPlayer не переживает кадр.
+    private readonly List<(string Name, int OldTeam, int NewTeam)> _pendingTeamChanges = new();
+    private bool _teamFlushScheduled;
+
     private HookResult OnPlayerTeam(EventPlayerTeam ev)
     {
         if (ev.IsBot) return HookResult.Continue;
@@ -18,22 +28,64 @@ public sealed partial class NotifyMessages
 
         var newTeam = ev.Team;
         var oldTeam = ev.OldTeam;
+        var playerName = player.Name;
+        var steamId = player.SteamID;
 
         if (Config.Debug)
-            _logger.Info($"[EVENT] {player.Name} team change: {GetTeamName(oldTeam)} -> {GetTeamName(newTeam)}");
+            _logger.Info($"[EVENT] {playerName} team change: {GetTeamName(oldTeam)} -> {GetTeamName(newTeam)} " +
+                         $"(silent={ev.Silent}, disconnect={ev.Disconnect})");
 
-        if (oldTeam == 0 && (newTeam == 1 || newTeam == 2 || newTeam == 3))
+        // Уход с сервера — не смена команды
+        if (ev.Disconnect || newTeam == 0 || newTeam == oldTeam) return HookResult.Continue;
+
+        // Движок сам молчит в чате про эту смену (halftime-свап, тихие переводы плагинами) — и мы молчим
+        if (ev.Silent)
         {
-            AnnouncePlayerTeamJoin(player, newTeam);
+            _logger.Debug($"[TEAM] {playerName}: silent-смена, анонс пропущен");
             return HookResult.Continue;
         }
 
-        if (newTeam != 0 && newTeam != oldTeam)
+        // Первое попадание в команду после смены карты — возврат, а не событие
+        if (oldTeam == 0 && _sessionService.TakeReturning(steamId, DateTime.UtcNow, ReturningGrace))
         {
-            AnnounceTeamChange(player, oldTeam, newTeam);
+            _logger.Debug($"[TEAM] {playerName}: команда после смены карты, анонс пропущен");
+            return HookResult.Continue;
+        }
+
+        if (oldTeam == 0)
+        {
+            AnnouncePlayerTeamJoin(playerName, newTeam);
+            return HookResult.Continue;
+        }
+
+        // Переход между командами анонсируем через кадр — пачкой, чтобы отсеять смену сторон
+        _pendingTeamChanges.Add((playerName, oldTeam, newTeam));
+
+        if (!_teamFlushScheduled)
+        {
+            _teamFlushScheduled = true;
+            Core.Scheduler.NextTick(FlushTeamChanges);
         }
 
         return HookResult.Continue;
+    }
+
+    private void FlushTeamChanges()
+    {
+        _teamFlushScheduled = false;
+
+        var batch = _pendingTeamChanges.ToArray();
+        _pendingTeamChanges.Clear();
+        if (batch.Length == 0) return;
+
+        if (TeamSwap.IsMassSwap(batch.Select(c => (c.OldTeam, c.NewTeam)).ToArray()))
+        {
+            _logger.Debug($"[TEAM] смена сторон ({batch.Length} игроков за кадр), анонс пропущен");
+            return;
+        }
+
+        foreach (var (name, oldTeam, newTeam) in batch)
+            AnnounceTeamChange(name, oldTeam, newTeam);
     }
 
     private static string GetTeamName(int team)
@@ -55,7 +107,7 @@ public sealed partial class NotifyMessages
         _ => "{GREY}Spectators{DEFAULT}"
     };
 
-    private void AnnounceTeamChange(IPlayer player, int oldTeam, int newTeam)
+    private void AnnounceTeamChange(string playerName, int oldTeam, int newTeam)
     {
         if (string.IsNullOrEmpty(Config.ChangeTeamMessage)) return;
 
@@ -63,7 +115,7 @@ public sealed partial class NotifyMessages
         // увидел бы в чате литеральное «{RED}Terrorists{DEFAULT}».
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["{PLAYERNAME}"] = player.Name,
+            ["{PLAYERNAME}"] = playerName,
             ["{TEAM}"] = ColoredTeam(newTeam),
             ["{OLD_TEAM}"] = ColoredTeam(oldTeam)
         };
@@ -71,13 +123,13 @@ public sealed partial class NotifyMessages
         Broadcast(Config.ChangeTeamMessage, values);
     }
 
-    private void AnnouncePlayerTeamJoin(IPlayer player, int team)
+    private void AnnouncePlayerTeamJoin(string playerName, int team)
     {
         if (string.IsNullOrEmpty(Config.JoinTeamMessage)) return;
 
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["{PLAYERNAME}"] = player.Name,
+            ["{PLAYERNAME}"] = playerName,
             ["{TEAM}"] = ColoredTeam(team)
         };
 
