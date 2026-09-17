@@ -173,13 +173,16 @@ public class ServiceConstructionTests
     {
         var config = new Config();
         var logger = new RecordingLogger();
-        var processor = new MessageProcessor(config, _ => null);
+        // EngineServerInfo создаётся здесь же: его конструктор обязан быть пустым,
+        // нативы читаются лениво и только из событий
+        var processor = new MessageProcessor(config, _ => null, new EngineServerInfo());
 
         var ex = Record.Exception(() =>
         {
             _ = new DisplayService(config, processor, logger);
             _ = new SessionService();
-            _ = new ServerStatusService(config, logger, (_, _, _) => null!);
+            _ = new ServerStatusService(config, logger, (_, _) => () => { }, action => action());
+            _ = new AdvertisementService(config, logger, (_, _) => () => { }, (_, _) => { });
         });
 
         Assert.Null(ex);

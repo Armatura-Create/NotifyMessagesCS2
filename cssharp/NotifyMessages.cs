@@ -3,6 +3,7 @@ using System.Reflection;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
+using CounterStrikeSharp.API.Modules.Timers;
 
 namespace NotifyMessages;
 
@@ -57,6 +58,9 @@ public partial class NotifyMessages : BasePlugin
     private LanguageIndex _languageIndex = null!;
     private AdvertisementService _advertisementService = null!;
 
+    // Факты о сервере для системных тегов. Конструктор пуст — нативы читаются лениво.
+    private readonly EngineServerInfo _serverInfo = new();
+
     public override void Load(bool hotReload)
     {
         _logger = new PluginLogger(() => Config?.Debug == true);
@@ -65,7 +69,7 @@ public partial class NotifyMessages : BasePlugin
         _geoIpService = new GeoIpService(ModuleDirectory, _logger);
         _sessionService = new SessionService();
         _languageIndex = LanguageIndex.Build(Config);
-        _messageProcessor = new MessageProcessor(Config, ResolveLanguage);
+        _messageProcessor = new MessageProcessor(Config, ResolveLanguage, _serverInfo);
         _displayService = new DisplayService(Config, _messageProcessor, _logger);
         _serverStatusService = CreateServerStatusService();
         _advertisementService = CreateAdvertisementService();
@@ -130,17 +134,32 @@ public partial class NotifyMessages : BasePlugin
         }
     }
 
+    /// Периодический таймер фреймворка в виде «как остановить»: сервисы не знают про Timer.
+    private Action RepeatEvery(float intervalSeconds, Action action)
+    {
+        var timer = AddTimer(intervalSeconds, action, TimerFlags.REPEAT);
+        return () => timer.Kill();
+    }
+
+    /// Одноразовый таймер в том же виде.
+    private Action DelayOnce(float delaySeconds, Action action)
+    {
+        var timer = AddTimer(delaySeconds, action);
+        return () => timer.Kill();
+    }
+
     private ServerStatusService CreateServerStatusService() => new(
         Config,
         _logger,
-        (interval, action, flags) => AddTimer(interval, action, flags));
+        RepeatEvery,
+        // Server.NextFrame — штатный способ вернуться в главный поток из фона
+        Server.NextFrame);
 
     private AdvertisementService CreateAdvertisementService() => new(
         Config,
         _logger,
-        (interval, action, flags) => AddTimer(interval, action, flags),
-        // Лямбда, а не метод-группа: у Print есть необязательный параметр values
-        (channel, message, target) => _displayService.Print(channel, message, target));
+        RepeatEvery,
+        (channel, message) => _displayService.Print(channel, message));
 
     private void OnTick()
     {

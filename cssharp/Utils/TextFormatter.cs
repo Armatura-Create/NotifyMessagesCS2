@@ -55,7 +55,10 @@ public static class TextFormatter
     /// Теги, которые умеет подставить ReplaceColorTags. Диагностика шаблонов берёт список
     /// отсюда, а не заводит свой — иначе он неизбежно разъедется с реализацией.
     internal static IReadOnlySet<string> KnownColorTags { get; } =
-        new HashSet<string>(ColorTagMap.Keys, StringComparer.OrdinalIgnoreCase) { "{SPACE}" };
+        new HashSet<string>(ColorTagMap.Keys, StringComparer.OrdinalIgnoreCase)
+        {
+            "{SPACE}", "{BIG}", "{MEDIUM}", "{SMALL}"
+        };
 
     /// Заменяет цветовые теги на управляющие коды движка CS2
     public static string ReplaceColorTags(this string input)
@@ -73,7 +76,9 @@ public static class TextFormatter
                 result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
         }
 
-        return result;
+        // Размеры текста умеет только HTML-панель. В чате их вырезаем молча:
+        // один шаблон может ходить в оба канала, и тег не должен доезжать текстом.
+        return RemoveSizeTags(result);
     }
 
     // Приблизительные hex-эквиваленты цветов чата — ТОЛЬКО для HTML-центра.
@@ -128,8 +133,25 @@ public static class TextFormatter
         .OrderByDescending(k => k.Length)
         .ToArray();
 
+    private static string RemoveSizeTags(string text)
+    {
+        if (text.IndexOf('{') < 0) return text;
+
+        foreach (var tag in HtmlSizeMap.Keys)
+        {
+            if (text.Contains(tag, StringComparison.OrdinalIgnoreCase))
+                text = Replace(text, tag, string.Empty, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return text;
+    }
+
     /// Рендер для HTML-центра: цвет тегом <font>, перенос строки — <br>.
     /// Управляющие коды чата этот канал не понимает вовсе, поэтому здесь их быть не должно.
+    ///
+    /// Каждый тег открывает <font>, и все они закрываются в конце строки: панель CS2
+    /// терпима к незакрытой разметке, но следующее сообщение не должно наследовать
+    /// цвет и размер предыдущего.
     public static string ToCenterHtml(string input)
     {
         if (string.IsNullOrEmpty(input)) return input;
@@ -139,13 +161,33 @@ public static class TextFormatter
             .Replace("\u2029", "<br>", StringComparison.Ordinal)
             .Replace("{SPACE}", "&nbsp;&nbsp;&nbsp;", StringComparison.OrdinalIgnoreCase);
 
+        var opened = 0;
         foreach (var kv in SortedHtmlTags)
         {
-            if (result.Contains(kv.Key, StringComparison.OrdinalIgnoreCase))
-                result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
+            if (!result.Contains(kv.Key, StringComparison.OrdinalIgnoreCase)) continue;
+
+            opened += CountOccurrences(result, kv.Key);
+            result = Replace(result, kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase);
         }
 
-        return result;
+        if (opened == 0) return result;
+
+        var builder = new StringBuilder(result, result.Length + opened * 7);
+        for (var i = 0; i < opened; i++) builder.Append("</font>");
+        return builder.ToString();
+    }
+
+    private static int CountOccurrences(string text, string value)
+    {
+        var count = 0;
+        var index = text.IndexOf(value, StringComparison.OrdinalIgnoreCase);
+        while (index >= 0)
+        {
+            count++;
+            index = text.IndexOf(value, index + value.Length, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return count;
     }
 
     /// Убирает цветовые теги, не подставляя ничего: для plain-каналов (центр, консоль, alert).

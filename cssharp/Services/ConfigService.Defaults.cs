@@ -228,6 +228,24 @@ public sealed partial class ConfigService
                 },
                 
                 // Реклама (используется в Ads.json)
+                // Заголовки панелей в центре экрана (CenterHtml)
+                ["skins_title"] = new()
+                {
+                    ["RU"] = "Скины и ножи",
+                    ["US"] = "Skins & Knives",
+                    ["UA"] = "Скіни та ножі",
+                    ["PL"] = "Skiny i noże",
+                    ["DE"] = "Skins & Messer"
+                },
+                ["viptest_title"] = new()
+                {
+                    ["RU"] = "Попробуй бесплатно: !viptest",
+                    ["US"] = "Try it for free: !viptest",
+                    ["UA"] = "Спробуй безкоштовно: !viptest",
+                    ["PL"] = "Wypróbuj za darmo: !viptest",
+                    ["DE"] = "Kostenlos testen: !viptest"
+                },
+
                 ["reklama_1"] = new()
                 {
                     ["RU"] = "Хочешь крутые скины? Используй команды:\nㅤㅤㅤ{LIGHTBLUE}➡ !ws\nㅤㅤㅤ➡ !knife\nㅤㅤㅤ➡ !gloves\nㅤㅤㅤ➡ !skins",
@@ -310,7 +328,9 @@ public sealed partial class ConfigService
                     Messages = new List<Dictionary<string, string>>
                     {
                         new() { ["Chat"] = "{prefix}{reklama_1}" },
-                        new() { ["Center"] = "!ws • !knife • !gloves • !skins" }
+                        // Панель в центре экрана: заголовок крупнее, тело мельче, цвета — тегами.
+                        // Размеры {BIG}/{MEDIUM}/{SMALL} понимает только CenterHtml.
+                        new() { ["CenterHtml"] = "{BIG}{LIGHTBLUE}{skins_title}{DEFAULT}\n{SMALL}!ws • !knife • !gloves • !skins" }
                     }
                 },
                 new Advertisement
@@ -319,7 +339,7 @@ public sealed partial class ConfigService
                     Messages = new List<Dictionary<string, string>>
                     {
                         new() { ["Chat"] = "{prefix}{reklama_2}" },
-                        new() { ["Center"] = "!viptest - FREE!" }
+                        new() { ["CenterHtml"] = "{BIG}{GOLD}VIP{DEFAULT}\n{SMALL}{viptest_title}" }
                     }
                 },
                 new Advertisement

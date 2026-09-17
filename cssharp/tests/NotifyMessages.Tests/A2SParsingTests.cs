@@ -110,3 +110,35 @@ public class A2SParsingTests
         Assert.False(AdvancedA2S.TryReadNullTerminatedString(data, ref index, out _));
     }
 }
+
+/// Имя карты в A2S-ответе пишет чужой админ — это недоверенный текст, который
+/// подставляется в наш шаблон чата.
+public class RemoteTextSanitizerTests
+{
+    [Fact]
+    public void Braces_AreStripped_SoRemoteServerCannotInjectOurTags()
+    {
+        Assert.Equal("prefixRED de_dust2", ServerStatusService.SanitizeRemoteText("{prefix}{RED} de_dust2"));
+    }
+
+    [Fact]
+    public void ControlCharactersAndLineBreaks_AreStripped()
+    {
+        Assert.Equal("de_dust2spam", ServerStatusService.SanitizeRemoteText("de_dust2\n\r\t\u0001spam\u2029"));
+    }
+
+    [Fact]
+    public void Length_IsCapped()
+    {
+        var result = ServerStatusService.SanitizeRemoteText(new string('a', 500));
+        Assert.Equal(64, result.Length);
+    }
+
+    [Fact]
+    public void OfflineServer_KeepsPlaceholder()
+    {
+        var (chat, _) = ServerStatusService.BuildServerLines(
+            new ServerData { Ip = "1.2.3.4", Port = 27015, MessageTemplate = "{SERVER_MAP}" }, null);
+        Assert.Equal("OFFLINE", chat);
+    }
+}

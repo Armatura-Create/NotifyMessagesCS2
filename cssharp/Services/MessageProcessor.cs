@@ -1,13 +1,7 @@
 using System;
 using System.Globalization;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
-using CounterStrikeSharp.API;
-using CounterStrikeSharp.API.Core;
-using Server = CounterStrikeSharp.API.Server;
-using CounterStrikeSharp.API.Modules.Cvars;
-using CounterStrikeSharp.API.Modules.Utils;
 
 namespace NotifyMessages;
 
@@ -18,8 +12,12 @@ namespace NotifyMessages;
 /// - замену \n на спец-символ для отображения в центре
 /// - замену имён карт согласно Config.MapsName
 ///
-/// ВАЖНО: вызывать только из главного потока — ReplaceMessageTags дёргает нативы
-/// (NativeAPI.GetMapName, ConVar.Find, Utilities.GetPlayers).
+/// ВАЖНО: вызывать только из главного потока — ReplaceMessageTags читает IServerInfoSource,
+/// а за ним стоят нативы движка (имя карты, ConVar, список игроков).
+///
+/// Фреймворка здесь нет ни одной строкой: всё, что зависит от движка, приходит через
+/// IServerInfoSource. Поэтому класс совпадает в cssharp/ и swiftly/ и проверяется
+/// тестами на любой машине.
 public sealed class MessageProcessor
 {
     // internal, а не private: диагностика шаблонов обязана видеть ровно те же теги,
@@ -40,11 +38,13 @@ public sealed class MessageProcessor
 
     private readonly Config _config;
     private readonly Func<ulong, string?> _getIsoCodeBySteamId;
+    private readonly IServerInfoSource _server;
 
-    public MessageProcessor(Config config, Func<ulong, string?> getIsoCodeBySteamId)
+    public MessageProcessor(Config config, Func<ulong, string?> getIsoCodeBySteamId, IServerInfoSource server)
     {
         _config = config;
         _getIsoCodeBySteamId = getIsoCodeBySteamId;
+        _server = server;
     }
 
     /// Получить ISO-код для игрока (для кеширования)
@@ -152,7 +152,7 @@ public sealed class MessageProcessor
         var result = message;
 
         if (result.Contains("{MAP}", StringComparison.Ordinal))
-            result = result.Replace("{MAP}", NativeAPI.GetMapName());
+            result = result.Replace("{MAP}", _server.MapName, StringComparison.Ordinal);
 
         if (result.Contains("{TIME}", StringComparison.Ordinal))
             result = result.Replace("{TIME}", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
@@ -161,29 +161,32 @@ public sealed class MessageProcessor
             result = result.Replace("{DATE}", DateTime.Now.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture));
 
         if (result.Contains("{SERVERNAME}", StringComparison.Ordinal))
-            result = result.Replace("{SERVERNAME}", ConVar.Find("hostname")?.StringValue ?? "Server");
+            result = result.Replace("{SERVERNAME}", _server.Hostname, StringComparison.Ordinal);
 
         if (result.Contains("{IP}", StringComparison.Ordinal))
-            result = result.Replace("{IP}", ConVar.Find("ip")?.StringValue ?? "127.0.0.1");
+            result = result.Replace("{IP}", _server.Ip, StringComparison.Ordinal);
 
         if (result.Contains("{PORT}", StringComparison.Ordinal))
-            result = result.Replace("{PORT}",
-                ConVar.Find("hostport")?.GetPrimitiveValue<int>().ToString(CultureInfo.InvariantCulture) ?? "27015");
+            result = result.Replace("{PORT}", _server.Port, StringComparison.Ordinal);
 
         if (result.Contains("{MAXPLAYERS}", StringComparison.Ordinal))
-            result = result.Replace("{MAXPLAYERS}", Server.MaxPlayers.ToString(CultureInfo.InvariantCulture));
+            result = result.Replace("{MAXPLAYERS}", _server.MaxPlayers.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal);
 
         if (result.Contains("{PLAYERS}", StringComparison.Ordinal))
-            result = result.Replace("{PLAYERS}",
-                Utilities.GetPlayers().Count(u => u.PlayerPawn?.Value?.IsValid == true).ToString(CultureInfo.InvariantCulture));
+            result = result.Replace("{PLAYERS}", _server.Players.ToString(CultureInfo.InvariantCulture),
+                StringComparison.Ordinal);
 
         if (_config.MapsName != null)
         {
             foreach (var (key, niceName) in _config.MapsName)
             {
-                // Regex дорогой — не запускаем его для карт, которых нет в строке
+                // Regex дорогой — не запускаем его для карт, которых нет в строке.
+                // Замена через MatchEvaluator, а не строкой: строка замены — это шаблон,
+                // в котором "$1" и "$$" имеют смысл, и красивое имя карты с долларом
+                // превращалось бы в мусор.
                 if (result.Contains(key, StringComparison.Ordinal))
-                    result = Regex.Replace(result, $@"\b{Regex.Escape(key)}\b", niceName);
+                    result = Regex.Replace(result, $@"\b{Regex.Escape(key)}\b", _ => niceName);
             }
         }
 

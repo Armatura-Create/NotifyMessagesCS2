@@ -190,7 +190,7 @@ public partial class NotifyMessages
 
         _logger.Debug($"[JOIN] 7/8 ставлю таймер анонса входа ({JoinAnnounceDelaySeconds} с)");
 
-        _sessionService.SetConnectionTimer(steamId, AddTimer(JoinAnnounceDelaySeconds, () =>
+        _sessionService.SetConnectionTimer(steamId, DelayOnce(JoinAnnounceDelaySeconds, () =>
         {
             _logger.Debug($"[JOIN-TIMER] сработал для {playerName}");
 

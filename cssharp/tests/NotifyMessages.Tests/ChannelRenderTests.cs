@@ -159,11 +159,23 @@ public class ChatColorPrefixTests
 /// Сквозная проверка: шаблон из конфига -> ProcessMessage -> строка, уходящая в PrintToChat.
 /// Нативов здесь нет: ReplaceMessageTags трогает движок только если в строке есть {MAP},
 /// {PLAYERS} и подобные, а их в этих шаблонах нет.
+/// Факты о сервере для тестов: нативов нет, значения известны заранее.
+internal sealed class FakeServerInfo : IServerInfoSource
+{
+    public string MapName { get; init; } = "de_dust2";
+    public string Hostname { get; init; } = "Test Server";
+    public string Ip { get; init; } = "127.0.0.1";
+    public string Port { get; init; } = "27015";
+    public int MaxPlayers { get; init; } = 32;
+    public int Players { get; init; } = 7;
+}
+
 public class ColorPipelineTests
 {
     private static MessageProcessor Processor() => new(
         ConfigService.BuildDefaultConfig(),
-        _ => "RU");
+        _ => "RU",
+        new FakeServerInfo());
 
     private static bool HasControlCodes(string text)
     {
@@ -215,10 +227,65 @@ public class ColorPipelineTests
         const string typo = "{LIGHTPBLUE}";
         var config = ConfigService.BuildDefaultConfig();
 
-        Assert.Contains(typo, new MessageProcessor(config, _ => "RU")
+        Assert.Contains(typo, new MessageProcessor(config, _ => "RU", new FakeServerInfo())
             .ProcessMessage(typo + "X", 0, MessageType.Chat), System.StringComparison.Ordinal);
 
         var issues = TemplateDiagnostics.Analyze(typo, config, "test");
         Assert.Contains(issues, i => i.Severity == TemplateSeverity.Error && i.Tag == typo);
+    }
+}
+
+/// Системные теги приходят из IServerInfoSource — единственной точки, где сервисы
+/// касаются движка. Здесь она подменена, и пайплайн проверяется целиком.
+public class SystemTagTests
+{
+    [Fact]
+    public void SystemTags_AreFilledFromServerInfo()
+    {
+        var processor = new MessageProcessor(ConfigService.BuildDefaultConfig(), _ => "RU",
+            new FakeServerInfo { Hostname = "Armaturix", Players = 12, MaxPlayers = 24 });
+
+        var result = processor.ProcessMessage("{SERVERNAME}: {PLAYERS}/{MAXPLAYERS} на {MAP}", 0, MessageType.Console);
+
+        // Дефолтный MapsName превращает de_dust2 в Dust 2
+        Assert.Equal("Armaturix: 12/24 на Dust 2", result);
+    }
+
+    [Fact]
+    public void MapsName_WithDollarSign_IsNotTreatedAsReplacementPattern()
+    {
+        // Регрессия: красивое имя шло в Regex.Replace строкой замены, где "$" — спецсимвол
+        var config = new Config
+        {
+            DefaultLang = "RU",
+            MapsName = new Dictionary<string, string> { ["de_cash"] = "Cash $$$ Map" }
+        };
+
+        var processor = new MessageProcessor(config, _ => "RU", new FakeServerInfo { MapName = "de_cash" });
+
+        Assert.Equal("Cash $$$ Map", processor.ProcessMessage("{MAP}", 0, MessageType.Console));
+    }
+
+    [Fact]
+    public void CenterHtml_ClosesEveryFontTag()
+    {
+        var html = MessageProcessor.Render("{BIG}{RED}Заголовок\n{SMALL}тело", MessageType.CenterHtml);
+
+        var opened = html.Split("<font", StringSplitOptions.None).Length - 1;
+        var closed = html.Split("</font>", StringSplitOptions.None).Length - 1;
+
+        Assert.Equal(3, opened);
+        Assert.Equal(opened, closed);
+        Assert.Contains("fontSize-l", html, StringComparison.Ordinal);
+        Assert.Contains("fontSize-sm", html, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SizeTags_AreSilentlyDroppedInChat()
+    {
+        // Один шаблон может ходить и в чат, и в панель: размер в чате не должен доезжать текстом
+        var chat = MessageProcessor.Render("{BIG}Текст", MessageType.Chat);
+        Assert.DoesNotContain("{BIG}", chat, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Текст", chat, StringComparison.Ordinal);
     }
 }

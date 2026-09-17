@@ -60,8 +60,8 @@ public partial class NotifyMessages
         _logger.Debug($"[COMMAND] css_servers by {controller.PlayerName}, showing {Config.Servers.List.Count} server(s)");
 
         // Показываем текущие данные из кеша
-        _serverStatusService.AnnounceToPlayer(controller,
-            (channel, message, target) => _displayService.Print(channel, message, target));
+        _serverStatusService.AnnounceToPlayer(controller.PlayerName,
+            (channel, message) => _displayService.Print(channel, message, controller));
 
         // И просим обновить кеш в фоне к следующему запросу (респектит TTL и in-flight guard)
         _serverStatusService.TriggerBackgroundUpdate();
@@ -120,7 +120,7 @@ public partial class NotifyMessages
         Config = LoadConfigSafely();
         // Индекс языков кеширует Config — пересобираем, иначе останется на старом конфиге
         _languageIndex = LanguageIndex.Build(Config);
-        _messageProcessor = new MessageProcessor(Config, ResolveLanguage);
+        _messageProcessor = new MessageProcessor(Config, ResolveLanguage, _serverInfo);
         _displayService.Update(Config, _messageProcessor);
 
         // Re-init services and timers to apply new config

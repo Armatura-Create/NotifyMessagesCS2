@@ -4,11 +4,6 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CounterStrikeSharp.API;
-using CounterStrikeSharp.API.Core;
-using CounterStrikeSharp.API.Modules.Utils;
-using CounterStrikeSharp.API.Modules.Timers;
-using Timer = CounterStrikeSharp.API.Modules.Timers.Timer;
 
 namespace NotifyMessages;
 
@@ -17,15 +12,23 @@ namespace NotifyMessages;
 /// Опрос выполняется в фоновом потоке и НЕ трогает нативы CS2 — только UDP-сокет,
 /// строки и словарь под lock. Раньше запросы делались через GetAwaiter().GetResult()
 /// прямо в главном потоке и подвешивали сервер до timeout+250 мс на каждый адрес.
+///
+/// Фреймворка здесь нет: таймер и возврат в главный поток приходят делегатами из плагина.
+/// Поэтому класс одинаков в cssharp/ и swiftly/ и проверяется тестами без сервера.
 public sealed class ServerStatusService
 {
     private readonly Config _config;
     private readonly ILogger _logger;
-    private readonly Func<float, Action, TimerFlags, Timer> _addTimer;
+
+    /// (интервал в секундах, действие) -> как остановить. Плагин оборачивает свой таймер.
+    private readonly Func<float, Action, Action> _repeatEvery;
+
+    /// Выполнить действие в главном потоке (Server.NextFrame / Scheduler.NextTick).
+    private readonly Action<Action> _runOnMainThread;
 
     private readonly object _cacheLock = new();
     private readonly Dictionary<(string ip, int port), ServerCacheEntry> _serverCache = new();
-    private readonly List<Timer> _timers = new();
+    private readonly List<Action> _stopTimers = new();
 
     // Сколько серверов опрашиваем одновременно
     private const int MaxConcurrentQueries = 8;
@@ -37,19 +40,20 @@ public sealed class ServerStatusService
     public ServerStatusService(
         Config config,
         ILogger logger,
-        Func<float, Action, TimerFlags, Timer> addTimer)
+        Func<float, Action, Action> repeatEvery,
+        Action<Action> runOnMainThread)
     {
         _config = config;
         _logger = logger;
-        _addTimer = addTimer;
+        _repeatEvery = repeatEvery;
+        _runOnMainThread = runOnMainThread;
     }
 
     /// Логирование из фонового потока маршалим в главный: логгер пишет в консоль,
-    /// которую перехватывает сам CounterStrikeSharp, и звать её из чужого потока —
-    /// лишний риск. Server.NextFrame — штатный способ вернуться в главный поток.
-    private void BgDebug(string message) => Server.NextFrame(() => _logger.Debug(message));
+    /// которую перехватывает сам фреймворк, и звать её из чужого потока — лишний риск.
+    private void BgDebug(string message) => _runOnMainThread(() => _logger.Debug(message));
 
-    private void BgError(string message, Exception? ex = null) => Server.NextFrame(() => _logger.Error(message, ex));
+    private void BgError(string message, Exception? ex = null) => _runOnMainThread(() => _logger.Error(message, ex));
 
     private bool Enabled =>
         _config.Servers is { Enabled: true } servers && servers.List.Count > 0;
@@ -103,16 +107,15 @@ public sealed class ServerStatusService
         if (!Enabled) return;
 
         var interval = Math.Max(5f, _config.Servers!.Interval);
-        _timers.Add(_addTimer(interval, () => RefreshAsync(force: false, reason: "Periodic update"),
-            TimerFlags.REPEAT));
+        _stopTimers.Add(_repeatEvery(interval, () => RefreshAsync(force: false, reason: "Periodic update")));
     }
 
     /// Останавливает периодический опрос
     public void Stop()
     {
         _stopped = true;
-        foreach (var t in _timers) t.Kill();
-        _timers.Clear();
+        foreach (var stop in _stopTimers) stop();
+        _stopTimers.Clear();
     }
 
     /// Принудительно обновить кеш в фоне (например, после показа списка серверов)
@@ -248,9 +251,35 @@ public sealed class ServerStatusService
         BgDebug($"[ServerStatus] {serverInfo.Ip}:{serverInfo.Port} - {(info != null ? "ONLINE" : "OFFLINE")}");
     }
 
+    // Всё, что пришло по сети от чужого сервера, — недоверенный текст. Длиннее этого
+    // имя карты не бывает, а всё, что длиннее, — попытка забить чат.
+    private const int MaxRemoteTextLength = 64;
+
+    /// Чистит строку из A2S-ответа перед подстановкой в шаблон.
+    ///
+    /// Чужой сервер отвечает тем, чем захочет. Фигурные скобки в его имени карты наш
+    /// MessageProcessor принял бы за свои теги ({prefix}, {RED}) — и чужой админ красил бы
+    /// наш чат; управляющие символы и переносы строк дали бы многострочный спам.
+    /// Убираем и то, и другое, длину ограничиваем.
+    internal static string SanitizeRemoteText(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+
+        var builder = new System.Text.StringBuilder(Math.Min(value.Length, MaxRemoteTextLength));
+        foreach (var c in value)
+        {
+            if (builder.Length >= MaxRemoteTextLength) break;
+            if (char.IsControl(c) || c == '{' || c == '}' || c == '\u2029') continue;
+            builder.Append(c);
+        }
+
+        return builder.ToString().Trim();
+    }
+
     internal static (string chat, string console) BuildServerLines(ServerData s, A2SInfoResponse? info)
     {
-        string map = info?.Map.Trim() ?? "OFFLINE";
+        var map = info == null ? "OFFLINE" : SanitizeRemoteText(info.Map);
+        if (map.Length == 0) map = "?";
         string players = info != null ? Math.Max(info.Players - info.Bots, 0).ToString(CultureInfo.InvariantCulture) : "0";
         string max = info?.MaxPlayers.ToString(CultureInfo.InvariantCulture) ?? s.MaxPlayersFallback?.ToString(CultureInfo.InvariantCulture) ?? "?";
 
@@ -277,8 +306,8 @@ public sealed class ServerStatusService
     /// Вызывать только из главного потока.
     /// Шаблоны из кеша отдаются в print как есть: локализацию, подстановку и рендер
     /// делает DisplayService.Print. Раньше строка обрабатывалась дважды.
-    public void AnnounceToPlayer(CCSPlayerController controller,
-        Action<MessageType, string, CCSPlayerController?> print)
+    /// print уже привязан к получателю — сервис не знает, что такое игрок.
+    public void AnnounceToPlayer(string playerName, Action<MessageType, string> print)
     {
         if (!Enabled)
         {
@@ -286,7 +315,7 @@ public sealed class ServerStatusService
             return;
         }
 
-        _logger.Debug($"[ServerStatus] Showing server list to {controller.PlayerName}");
+        _logger.Debug($"[ServerStatus] Showing server list to {playerName}");
 
         var snapshot = GetSnapshot();
         _logger.Debug($"[ServerStatus] Cache snapshot contains {snapshot.Count} server(s)");
@@ -298,18 +327,18 @@ public sealed class ServerStatusService
         }
 
         if (!string.IsNullOrEmpty(_config.TitleAnnounceServers))
-            print(MessageType.Chat, _config.TitleAnnounceServers!, controller);
+            print(MessageType.Chat, _config.TitleAnnounceServers!);
 
         foreach (var entry in snapshot)
         {
             if (!string.IsNullOrEmpty(entry.Chat))
-                print(MessageType.Chat, entry.Chat, controller);
+                print(MessageType.Chat, entry.Chat);
         }
 
         foreach (var entry in snapshot)
         {
             if (!string.IsNullOrEmpty(entry.Console))
-                print(MessageType.Console, entry.Console, controller);
+                print(MessageType.Console, entry.Console);
         }
 
         _logger.Debug("[ServerStatus] Finished showing server list");

@@ -1,26 +1,29 @@
+using System;
 using System.Collections.Generic;
-using CounterStrikeSharp.API.Modules.Timers;
 
 namespace NotifyMessages;
 
-/// Сервис сессий игроков: таймеры подключения и набор fully-connected
+/// Сервис сессий игроков: таймеры подключения и набор fully-connected.
+///
+/// Таймер хранится как «как его остановить», а не как тип фреймворка: класс одинаков
+/// в cssharp/ и swiftly/, где таймеры устроены по-разному.
 public sealed class SessionService
 {
     private readonly object _lock = new();
-    private readonly Dictionary<ulong, Timer> _connectionTimers = new();
+    private readonly Dictionary<ulong, Action> _connectionTimers = new();
     private readonly HashSet<ulong> _fullyConnectedPlayers = new();
 
     // Язык клиента (cl_language), снятый при подключении. Чистится в EventPlayerDisconnect
     // вместе с остальным состоянием игрока — иначе словарь растёт всё время жизни сервера.
     private readonly Dictionary<ulong, string> _languages = new();
 
-    public void SetConnectionTimer(ulong steamId, Timer timer)
+    public void SetConnectionTimer(ulong steamId, Action stopTimer)
     {
         lock (_lock)
         {
             if (_connectionTimers.TryGetValue(steamId, out var existing))
-                existing.Kill();
-            _connectionTimers[steamId] = timer;
+                existing();
+            _connectionTimers[steamId] = stopTimer;
         }
     }
 
@@ -28,9 +31,9 @@ public sealed class SessionService
     {
         lock (_lock)
         {
-            if (_connectionTimers.TryGetValue(steamId, out var t))
+            if (_connectionTimers.TryGetValue(steamId, out var stop))
             {
-                t.Kill();
+                stop();
                 _connectionTimers.Remove(steamId);
                 return true;
             }
@@ -100,7 +103,7 @@ public sealed class SessionService
     {
         lock (_lock)
         {
-            foreach (var kv in _connectionTimers) kv.Value.Kill();
+            foreach (var kv in _connectionTimers) kv.Value();
             _connectionTimers.Clear();
             _fullyConnectedPlayers.Clear();
             _languages.Clear();
