@@ -192,6 +192,8 @@ jobs:
   publish:
     needs: [version, cssharp, swiftly]
     runs-on: ubuntu-latest
+    # Загрузка ассета на GitHub иногда зависает намертво; без лимита прогон висит до 6 часов
+    timeout-minutes: 20
     env:
       PLUGIN_VERSION: ${{ needs.version.outputs.version }}
       RELEASE_TAG: ${{ needs.version.outputs.tag }}
@@ -315,27 +317,52 @@ jobs:
       # так, "Error saving asset", при уже собранных и проверенных архивах. gh грузит файлы
       # последовательно с ретраями, а шаг сделан идемпотентным: повторный запуск дозаливает
       # файлы (--clobber) и обновляет описание, а не падает на "release already exists".
+      # gh, а не softprops/action-gh-release: тот создаёт релиз и сразу параллельно грузит
+      # оба архива, а релиз в API становится видимым по тегу не мгновенно — v2.3.0 упал ровно
+      # так, "Error saving asset", при уже собранных и проверенных архивах.
+      #
+      # Файлы грузятся ПО ОДНОМУ, каждый под `timeout` и с повторами: загрузка ассета
+      # на GitHub иногда зависает без ошибки (v2.3.2 простоял так 10 минут на втором
+      # архиве), и без таймаута висел бы до лимита задачи. --clobber делает повтор
+      # безопасным: недолитый файл перезаписывается. Черновик создаётся без файлов
+      # и публикуется только когда все ассеты на месте — полурелиза не бывает.
+      # Шаг идемпотентен: повторный запуск дозаливает файлы и обновляет описание.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # gh release view находит и ЧЕРНОВИК: упавший action-gh-release оставил после себя
-          # draft, и первый прогон этого шага дозалил в него файлы, но не опубликовал.
-          # --draft=false публикует в любом случае; --latest — чтобы /releases/latest
-          # указывал сюда, а не на прошлую версию.
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Релиз $RELEASE_TAG уже есть — обновляю файлы и описание, публикую"
-            gh release upload "$RELEASE_TAG" artifacts/*.zip --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --draft=false --latest --title "$RELEASE_TAG" \
-              --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG" artifacts/*.zip \
+
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
               --repo "$GITHUB_REPOSITORY" \
+              --draft \
               --title "$RELEASE_TAG" \
               --notes-file release-notes.md \
               --verify-tag
+          else
+            echo "Релиз $RELEASE_TAG уже есть — дозаливаю файлы и обновляю описание"
           fi
+
+          for file in artifacts/*.zip; do
+            for attempt in 1 2 3; do
+              echo "Загрузка $(basename "$file"), попытка $attempt"
+              if timeout 240 gh release upload "$RELEASE_TAG" "$file" --clobber --repo "$GITHUB_REPOSITORY"; then
+                break
+              fi
+              if [ "$attempt" = 3 ]; then
+                echo "::error::не удалось загрузить $(basename "$file") за 3 попытки"
+                exit 1
+              fi
+              sleep 15
+            done
+          done
+
+          # Публикуем только теперь: все ассеты уже на месте.
+          # --latest — чтобы /releases/latest указывал сюда, а не на прошлую версию.
+          gh release edit "$RELEASE_TAG" --draft=false --latest --title "$RELEASE_TAG" \
+            --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
+
           # Проверка до конца: релиз опубликован (не draft) и оба архива на месте.
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,url,assets \
             --jq '"draft=\(.isDraft) \(.url)", (.assets[] | "\(.name)\t\(.size) bytes")'
