@@ -310,10 +310,26 @@ jobs:
 
           cat release-notes.md
 
+      # gh, а не softprops/action-gh-release: тот создаёт релиз и сразу параллельно грузит
+      # оба архива, а релиз в API становится видимым по тегу не мгновенно — v2.3.0 упал ровно
+      # так, "Error saving asset", при уже собранных и проверенных архивах. gh грузит файлы
+      # последовательно с ретраями, а шаг сделан идемпотентным: повторный запуск дозаливает
+      # файлы (--clobber) и обновляет описание, а не падает на "release already exists".
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.version.outputs.tag }}
-          name: ${{ needs.version.outputs.tag }}
-          body_path: release-notes.md
-          files: artifacts/*.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Релиз $RELEASE_TAG уже есть — обновляю файлы и описание"
+            gh release upload "$RELEASE_TAG" artifacts/*.zip --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$RELEASE_TAG" artifacts/*.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TAG" \
+              --notes-file release-notes.md \
+              --verify-tag
+          fi
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | "\(.name)\t\(.size) bytes"'
