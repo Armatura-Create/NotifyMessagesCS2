@@ -320,10 +320,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # gh release view находит и ЧЕРНОВИК: упавший action-gh-release оставил после себя
+          # draft, и первый прогон этого шага дозалил в него файлы, но не опубликовал.
+          # --draft=false публикует в любом случае; --latest — чтобы /releases/latest
+          # указывал сюда, а не на прошлую версию.
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Релиз $RELEASE_TAG уже есть — обновляю файлы и описание"
+            echo "Релиз $RELEASE_TAG уже есть — обновляю файлы и описание, публикую"
             gh release upload "$RELEASE_TAG" artifacts/*.zip --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --draft=false --latest --title "$RELEASE_TAG" \
+              --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$RELEASE_TAG" artifacts/*.zip \
               --repo "$GITHUB_REPOSITORY" \
@@ -331,5 +336,14 @@ jobs:
               --notes-file release-notes.md \
               --verify-tag
           fi
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
-            --jq '.assets[] | "\(.name)\t\(.size) bytes"'
+          # Проверка до конца: релиз опубликован (не draft) и оба архива на месте.
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,url,assets \
+            --jq '"draft=\(.isDraft) \(.url)", (.assets[] | "\(.name)\t\(.size) bytes")'
+          if [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != "false" ]; then
+            echo "::error::релиз $RELEASE_TAG остался черновиком"
+            exit 1
+          fi
+          for required in "NotifyMessages_cssharp_${PLUGIN_VERSION}.zip" "NotifyMessages_swiftly_${PLUGIN_VERSION}.zip"; do
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+              | grep -q -x -F "$required" || { echo "::error::в релизе нет $required"; exit 1; }
+          done
