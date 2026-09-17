@@ -1,0 +1,200 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Xunit;
+
+namespace NotifyMessages.Tests;
+
+internal sealed class RecordingLogger : ILogger
+{
+    public List<string> Infos { get; } = new();
+    public List<string> Errors { get; } = new();
+
+    public void Info(string message) => Infos.Add(message);
+    public void Debug(string message) { }
+    public void Error(string message, Exception? ex = null) => Errors.Add(message + (ex == null ? "" : " | " + ex.Message));
+}
+
+/// Кривой конфиг — самая частая проблема у пользователей.
+/// Он обязан приводить к внятному сообщению, а не к падению плагина.
+public sealed class ConfigResilienceTests : IDisposable
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "nm-tests-" + Guid.NewGuid().ToString("N"));
+
+    // В версии под SwiftlyS2 ConfigService принимает КАТАЛОГ конфигов целиком:
+    // путь configs/plugins/<Id> знает сам фреймворк (Core.Configuration.BasePath).
+    private string ConfigDir => Path.Combine(_root, "configs/plugins/NotifyMessages");
+
+    private void WriteConfig(string fileName, string content)
+    {
+        Directory.CreateDirectory(ConfigDir);
+        File.WriteAllText(Path.Combine(ConfigDir, fileName), content);
+    }
+
+    public void Dispose()
+    {
+        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+    }
+
+    [Fact]
+    public void FirstRun_CreatesAllFourConfigsAndReadme()
+    {
+        var config = new ConfigService(new RecordingLogger()).LoadOrCreate(ConfigDir);
+
+        Assert.NotNull(config);
+        foreach (var name in new[] { "Settings.json", "Messages.json", "Ads.json", "Servers.json", "README.txt" })
+            Assert.True(File.Exists(Path.Combine(ConfigDir, name)), $"{name} не создан");
+    }
+
+    [Fact]
+    public void FirstRun_WritesJsonSchemasNextToConfigs()
+    {
+        new ConfigService(new RecordingLogger()).LoadOrCreate(ConfigDir);
+
+        foreach (var name in new[]
+                 { "Settings.schema.json", "Messages.schema.json", "Ads.schema.json", "Servers.schema.json" })
+            Assert.True(File.Exists(Path.Combine(ConfigDir, name)), $"{name} не создан");
+
+        // Ссылка на схему обязана попасть в сам конфиг, иначе редактор её не подхватит
+        var settings = File.ReadAllText(Path.Combine(ConfigDir, "Settings.json"));
+        Assert.Contains("\"$schema\": \"./Settings.schema.json\"", settings, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SchemaReference_IsIgnoredWhenReadingBack()
+    {
+        // Свойство "$schema" не описано в моделях: System.Text.Json обязан его пропустить,
+        // иначе ссылка на схему ломала бы чтение конфига.
+        WriteConfig("Settings.json",
+            "{ \"$schema\": \"./Settings.schema.json\", \"DefaultLang\": \"PL\" }");
+
+        var logger = new RecordingLogger();
+        var config = new ConfigService(logger).LoadOrCreate(ConfigDir);
+
+        Assert.Equal("PL", config.DefaultLang);
+        Assert.Empty(logger.Errors);
+    }
+
+    [Fact]
+    public void MessageType_ReadsBothStringAndNumber()
+    {
+        // Строковое имя — новый формат, число — старые конфиги, оба обязаны работать
+        WriteConfig("Settings.json",
+            "{ \"WelcomeMessage\": { \"MessageType\": \"CenterHtml\", \"Message\": \"hi\" }," +
+            "  \"RestartNotify\": { \"MessageType\": 4, \"DefaultMessage\": \"x\" } }");
+
+        var config = new ConfigService(new RecordingLogger()).LoadOrCreate(ConfigDir);
+
+        Assert.Equal(MessageType.CenterHtml, config.WelcomeMessage!.MessageType);
+        Assert.Equal(MessageType.Alert, config.RestartNotify!.MessageType);
+    }
+
+    [Fact]
+    public void BrokenJson_DoesNotThrowAndReportsFileLineAndPosition()
+    {
+        // Пропущена запятая между полями — ошибка на третьей строке
+        WriteConfig("Settings.json", "{\n  \"Debug\": true\n  \"DefaultLang\": \"RU\"\n}");
+        WriteConfig("Messages.json", "{ \"LanguageMessages\": {} }");
+
+        var logger = new RecordingLogger();
+        var config = new ConfigService(logger).LoadOrCreate(ConfigDir);
+
+        Assert.NotNull(config);
+
+        var error = Assert.Single(logger.Errors, e => e.Contains("Settings.json"));
+        Assert.Contains("строка", error);
+        Assert.Contains("позиция", error);
+        Assert.Contains(ConfigDir, error);
+
+        // и громкая сводка, чтобы это не потерялось в логе
+        Assert.Contains(logger.Infos, i => i.Contains("не удалось прочитать"));
+    }
+
+    [Fact]
+    public void BrokenJson_FallsBackToDefaultsForThatFileOnly()
+    {
+        WriteConfig("Settings.json", "{ это не json ");
+        WriteConfig("Ads.json", "{ \"Ads\": [ { \"Interval\": 42, \"Messages\": [ { \"Chat\": \"hi\" } ] } ] }");
+
+        var config = new ConfigService(new RecordingLogger()).LoadOrCreate(ConfigDir);
+
+        // Settings уехал на дефолты...
+        Assert.Equal("RU", config.DefaultLang);
+        // ...а исправный Ads.json прочитан
+        Assert.NotNull(config.Ads);
+        Assert.Equal(42, config.Ads!.Single().Interval);
+    }
+
+    [Fact]
+    public void EmptyFile_IsReportedAndDoesNotThrow()
+    {
+        WriteConfig("Servers.json", "   ");
+        WriteConfig("Settings.json", "{ \"DefaultLang\": \"US\" }");
+
+        var logger = new RecordingLogger();
+        var config = new ConfigService(logger).LoadOrCreate(ConfigDir);
+
+        Assert.Equal("US", config.DefaultLang);
+        Assert.Contains(logger.Errors, e => e.Contains("Servers.json") && e.Contains("пуст"));
+    }
+
+    [Fact]
+    public void TrailingCommasAndCommentsAreTolerated()
+    {
+        // Осознанное послабление: это самые частые «ошибки» в конфигах, править их руками
+        // пользователю незачем, а данные читаются однозначно
+        WriteConfig("Settings.json", "{\n  // язык по умолчанию\n  \"DefaultLang\": \"DE\",\n}");
+
+        var logger = new RecordingLogger();
+        var config = new ConfigService(logger).LoadOrCreate(ConfigDir);
+
+        Assert.Equal("DE", config.DefaultLang);
+        Assert.DoesNotContain(logger.Errors, e => e.Contains("Settings.json"));
+    }
+
+    [Fact]
+    public void BrokenConfig_IsNotOverwritten()
+    {
+        const string broken = "{ \"DefaultLang\": \"RU\" ";
+        WriteConfig("Settings.json", broken);
+
+        new ConfigService(new RecordingLogger()).LoadOrCreate(ConfigDir);
+
+        // Плагин не имеет права затирать файл, который пользователь ещё чинит
+        Assert.Equal(broken, File.ReadAllText(Path.Combine(ConfigDir, "Settings.json")));
+    }
+}
+
+/// Сервисы создаются в Load(), где движок ещё не готов: их конструкторы обязаны быть
+/// пустыми. Здесь — те, что не касаются типов SwiftlyS2 и проверяются на любой машине.
+public class ServiceConstructionTests
+{
+    private sealed class NoServer : IServerInfoSource
+    {
+        public string MapName => "";
+        public string Hostname => "";
+        public string Ip => "";
+        public string Port => "";
+        public int MaxPlayers => 0;
+        public int Players => 0;
+    }
+
+    [Fact]
+    public void Services_CanBeConstructedWithoutTheGameEngine()
+    {
+        var config = new Config();
+        var logger = new RecordingLogger();
+        var processor = new MessageProcessor(config, _ => null, new NoServer());
+
+        var ex = Record.Exception(() =>
+        {
+            _ = new SessionService();
+            _ = new ServerStatusService(config, logger, (_, _) => () => { }, action => action());
+            _ = new AdvertisementService(config, logger, (_, _) => () => { }, (_, _) => { });
+            _ = processor.ProcessMessage("{prefix}", 0, MessageType.Chat);
+        });
+
+        Assert.Null(ex);
+    }
+}
