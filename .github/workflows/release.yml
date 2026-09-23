@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 jobs:
-  # Версия вычисляется ОДИН раз и раздаётся обеим целям: два плагина, собранные под
+  # Версия вычисляется ОДИН раз и раздаётся всем трём целям: плагины, собранные под
   # одним тегом, обязаны представляться серверу одним и тем же номером.
   version:
     runs-on: ubuntu-latest
@@ -34,13 +34,82 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Тег $TAG -> версия $VERSION"
 
+
+  # Свежие базы GeoLite2 — ОДИН раз на релиз, для всех трёх целей: архивы одного
+  # тега обязаны нести одну редакцию баз, а у MaxMind суточный лимит скачиваний.
+  #
+  # Ключ — секрет окружения RELEASE: секреты окружения видны ТОЛЬКО задачам с
+  # `environment: RELEASE`. Пока ключ читался в задачах сборки без окружения, он
+  # приходил пустой, и в архивы молча уезжали закоммиченные базы из GeoIP/.
+  # Теперь ключ виден ровно одной задаче, а сборки получают готовые файлы артефактом.
+  geoip:
+    runs-on: ubuntu-latest
+    environment: RELEASE
+    outputs:
+      edition: ${{ steps.fetch.outputs.edition }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: fetch
+        env:
+          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p geoip-fresh
+
+          # Без ключа (форк, окружение не настроено) — закоммиченные копии, но громко
+          if [ -z "${MAXMIND_LICENSE_KEY:-}" ]; then
+            echo "::warning::MAXMIND_LICENSE_KEY не задан в окружении RELEASE — в архивы уйдут базы из GeoIP/"
+            cp GeoIP/GeoLite2-Country.mmdb GeoIP/GeoLite2-City.mmdb geoip-fresh/
+            echo "edition=the copy committed to GeoIP/" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Ключ задан, но скачать не вышло — релиз падает: молча выпустить старые
+          # базы значит отменить то, ради чего ключ заведён
+          for edition in GeoLite2-Country GeoLite2-City; do
+            curl --fail --silent --show-error --location --retry 3 --retry-delay 10 \
+              --output "$edition.tar.gz" \
+              "https://download.maxmind.com/app/geoip_download?edition_id=$edition&license_key=$MAXMIND_LICENSE_KEY&suffix=tar.gz" \
+              || { echo "::error::MaxMind не отдал $edition (проверьте ключ и лимит скачиваний)"; exit 1; }
+            tar -xzf "$edition.tar.gz"
+            cp "$edition"_*/"$edition.mmdb" geoip-fresh/
+          done
+
+          # Недокачанная база выглядит как обычная до первого чтения: проверяем размер
+          # и маркер метаданных MMDB, который стоит в конце любого целого файла
+          for file in geoip-fresh/GeoLite2-Country.mmdb:3000000 geoip-fresh/GeoLite2-City.mmdb:30000000; do
+            path="${file%%:*}"; min="${file##*:}"
+            size=$(stat -c %s "$path")
+            [ "$size" -ge "$min" ] || { echo "::error::$path подозрительно мал: $size байт"; exit 1; }
+            tail -c 200000 "$path" | grep -a -q -F "MaxMind.com" \
+              || { echo "::error::$path не похож на MMDB: нет маркера метаданных"; exit 1; }
+          done
+
+          # Дата редакции — из имени каталога в архиве MaxMind: GeoLite2-City_20260922
+          stamp=$(ls -d GeoLite2-City_* | head -n1 | sed 's/.*_//')
+          echo "edition=MaxMind edition of ${stamp:0:4}-${stamp:4:2}-${stamp:6:2}" >> "$GITHUB_OUTPUT"
+          ls -la geoip-fresh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geoip
+          path: geoip-fresh
+          if-no-files-found: error
+
   cssharp:
-    needs: version
+    needs: [version, geoip]
     runs-on: ubuntu-latest
     env:
       PLUGIN_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      # Базы из задачи geoip поверх закоммиченных: MSBuild без ключа берёт ../GeoIP/
+      - uses: actions/download-artifact@v4
+        with:
+          name: geoip
+          path: GeoIP
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -56,11 +125,9 @@ jobs:
       - name: Test
         run: dotnet test cssharp/tests/NotifyMessages.Tests/NotifyMessages.Tests.csproj -c Release --no-build --verbosity normal
 
-      # Свежие базы GeoLite2, если в репозитории задан секрет.
-      # Без секрета в архив попадут закоммиченные копии из GeoIP/.
+      # Ключа MaxMind здесь нет сознательно: свежие базы уже лежат в GeoIP/
+      # (задача geoip), и MSBuild копирует их оттуда
       - name: Package
-        env:
-          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
         run: dotnet build cssharp/NotifyMessages.csproj -c Release --no-incremental -p:Version=$PLUGIN_VERSION
 
       # В релиз уходит ТОЛЬКО полный архив — с базами GeoLite2 внутри.
@@ -95,6 +162,12 @@ jobs:
             exit 1
           fi
 
+          # В архиве — ровно те базы, что скачала задача geoip
+          for db in GeoLite2-Country.mmdb GeoLite2-City.mmdb; do
+            [ "$(unzip -p "$ZIP" "$PLUGIN_DIR/$db" | sha256sum)" = "$(sha256sum < "GeoIP/$db")" ] \
+              || { echo "::error::$db в архиве не совпадает с базой из задачи geoip"; exit 1; }
+          done
+
       # Плагин должен представляться серверу ровно той версией, что стоит в теге.
       # ModuleVersion читает InformationalVersion, поэтому ищем её прямо в собранной DLL.
       - name: Verify plugin version matches tag
@@ -115,12 +188,18 @@ jobs:
           if-no-files-found: error
 
   swiftly:
-    needs: version
+    needs: [version, geoip]
     runs-on: ubuntu-latest
     env:
       PLUGIN_VERSION: ${{ needs.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      # Базы из задачи geoip поверх закоммиченных: MSBuild без ключа берёт ../GeoIP/
+      - uses: actions/download-artifact@v4
+        with:
+          name: geoip
+          path: GeoIP
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -136,8 +215,6 @@ jobs:
         run: dotnet test swiftly/tests/NotifyMessages.Swiftly.Tests/NotifyMessages.Swiftly.Tests.csproj -c Release --no-build --verbosity normal
 
       - name: Package
-        env:
-          MAXMIND_LICENSE_KEY: ${{ secrets.MAXMIND_LICENSE_KEY }}
         run: dotnet build swiftly/NotifyMessages.csproj -c Release --no-incremental -p:Version=$PLUGIN_VERSION
 
       - name: Verify artifact
@@ -172,6 +249,12 @@ jobs:
             exit 1
           fi
 
+          # В архиве — ровно те базы, что скачала задача geoip
+          for db in GeoLite2-Country.mmdb GeoLite2-City.mmdb; do
+            [ "$(unzip -p "$ZIP" "$PLUGIN_DIR/$db" | sha256sum)" = "$(sha256sum < "GeoIP/$db")" ] \
+              || { echo "::error::$db в архиве не совпадает с базой из задачи geoip"; exit 1; }
+          done
+
       - name: Verify plugin version matches tag
         run: |
           set -euo pipefail
@@ -189,14 +272,236 @@ jobs:
           path: swiftly/bin/Release/net10.0/NotifyMessages_swiftly_${{ needs.version.outputs.version }}.zip
           if-no-files-found: error
 
+  # Ядро C++-цели проверяется без SDK — отдельной задачей, чтобы падение здесь
+  # было сразу понятно чем вызвано
+  metamod-core:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Core tests
+        working-directory: metamod
+        run: |
+          make -f Makefile.tests -j"$(nproc)"
+          ./build-tests/nm_tests
+
+      - name: Core compiles as the game build does
+        working-directory: metamod
+        run: make -f Makefile.tests noexcept-check
+
+      - name: AMBuilder builds every core source
+        working-directory: metamod
+        run: make -f Makefile.tests sources-check
+
+  metamod-build:
+    needs: [version, geoip, metamod-core]
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            slug: linux
+            container: ghcr.io/source2ze/build-containers:steamrt3
+          - os: windows-latest
+            slug: windows
+
+    env:
+      HL2SDKCS2: ${{ github.workspace }}/NotifyMessages/metamod/sdk
+      PLUGIN_VERSION: ${{ needs.version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: NotifyMessages
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: cs2
+          path: NotifyMessages/metamod/sdk
+          submodules: recursive
+
+      - uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk-manifests
+          path: NotifyMessages/metamod/hl2sdk-manifests
+
+      - uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: master
+          path: mmsource-2.0
+          submodules: recursive
+
+      # AMBuild есть в образе SteamRT3; на Windows-раннере его ставим сами
+      - uses: actions/checkout@v4
+        if: matrix.os == 'windows-latest'
+        with:
+          repository: alliedmodders/ambuild
+          path: ambuild
+
+      - name: Install AMBuild
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools
+          cd ambuild && python -m pip install .
+
+      # PackageScript кладёт в архив базы из ../GeoIP/ — туда и распаковываем свежие
+      - uses: actions/download-artifact@v4
+        with:
+          name: geoip
+          path: NotifyMessages/GeoIP
+
+      # Версия у всех трёх целей одна и берётся из тега. В C# её подставляет
+      # MSBuild, здесь — генерируемый заголовок.
+      - name: Stamp version
+        shell: bash
+        working-directory: NotifyMessages/metamod
+        run: |
+          set -euo pipefail
+          cat > src/mm/version.h <<EOF
+          // Сгенерировано CI из тега. Руками не править.
+          #pragma once
+          #define NM_VERSION "$PLUGIN_VERSION"
+          EOF
+          cat src/mm/version.h
+
+      - name: Build plugin
+        shell: bash
+        working-directory: NotifyMessages/metamod
+        run: |
+          set -euo pipefail
+          mkdir -p build && cd build
+          python ../configure.py --enable-optimize --sdks cs2
+          ambuild
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metamod-tree-${{ matrix.slug }}
+          path: NotifyMessages/metamod/build/package/cs2
+          if-no-files-found: error
+
+  # По архиву на ОС: половина содержимого общего архива не могла бы запуститься
+  # на машине, куда его распаковали
+  metamod-package:
+    needs: [version, metamod-build]
+    runs-on: ubuntu-latest
+    env:
+      PLUGIN_VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: trees
+          pattern: metamod-tree-*
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: geoip
+          path: geoip
+
+      - name: Zip per OS
+        run: |
+          set -euo pipefail
+
+          for slug in linux windows; do
+            case "$slug" in
+              linux)
+                binary="addons/NotifyMessages/bin/linuxsteamrt64/NotifyMessages.so"
+                foreign="addons/NotifyMessages/bin/win64" ;;
+              windows)
+                binary="addons/NotifyMessages/bin/win64/NotifyMessages.dll"
+                foreign="addons/NotifyMessages/bin/linuxsteamrt64" ;;
+            esac
+
+            tree="trees/metamod-tree-$slug"
+            test -d "$tree" || { echo "::error::нет дерева $tree"; exit 1; }
+
+            ZIP="$PWD/NotifyMessages_metamod_${slug}_${PLUGIN_VERSION}.zip"
+            (cd "$tree" && zip -rq "$ZIP" .)
+
+            # Список снимается ОДИН раз в файл: "unzip -l | grep -q" под pipefail
+            # падает на УСПЕШНОМ совпадении (unzip получает SIGPIPE)
+            unzip -l "$ZIP" > listing.txt
+            cat listing.txt
+
+            for required in \
+              "$binary" \
+              "addons/metamod/NotifyMessages.vdf" \
+              "addons/NotifyMessages/GeoLite2-Country.mmdb" \
+              "addons/NotifyMessages/GeoLite2-City.mmdb"
+            do
+              grep -q -F "$required" listing.txt \
+                || { echo "::error::в архиве $slug нет $required"; exit 1; }
+            done
+
+            if grep -q -F "$foreign" listing.txt; then
+              echo "::error::в архиве $slug оказались бинарники другой ОС"
+              exit 1
+            fi
+
+            # Конфиги плагин создаёт сам — как и C#-цели, архив их не несёт
+            if grep -q -E 'Settings\.json|Messages\.json|Ads\.json|Servers\.json' listing.txt; then
+              echo "::error::в архиве $slug оказались конфиги"
+              exit 1
+            fi
+
+            for db in GeoLite2-Country.mmdb GeoLite2-City.mmdb; do
+              [ "$(unzip -p "$ZIP" "addons/NotifyMessages/$db" | sha256sum)" = "$(sha256sum < "geoip/$db")" ] \
+                || { echo "::error::$db в архиве $slug не совпадает с базой из задачи geoip"; exit 1; }
+            done
+
+            # VDF — KeyValues, где обратный слэш начинает escape
+            vdf=$(unzip -p "$ZIP" addons/metamod/NotifyMessages.vdf)
+            echo "$vdf"
+            case "$vdf" in
+              *'\'*) echo "::error::в VDF архива $slug обратные слэши"; exit 1 ;;
+            esac
+
+            # Плагин обязан представляться версией из тега, а не фолбэком 0.0.0-dev
+            unzip -p "$ZIP" "$binary" > plugin.bin
+            grep -a -q -F "$PLUGIN_VERSION" plugin.bin \
+              || { echo "::error::в $binary архива $slug нет версии $PLUGIN_VERSION"; exit 1; }
+            if grep -a -q -F "0.0.0-dev" plugin.bin; then
+              echo "::error::в $binary архива $slug остался фолбэк 0.0.0-dev"
+              exit 1
+            fi
+
+            # Metamod находит плагин через dlsym("CreateInterface"); nm читает ELF,
+            # objdump на Ubuntu умеет и PE. Через файл, не через pipe — см. выше.
+            case "$slug" in
+              linux)   nm -D --defined-only plugin.bin > exports.txt ;;
+              windows) objdump -p plugin.bin > exports.txt ;;
+            esac
+            grep -q -w CreateInterface exports.txt \
+              || { echo "::error::$binary архива $slug не экспортирует CreateInterface"; exit 1; }
+            rm -f plugin.bin
+          done
+
+          ls -la NotifyMessages_metamod_*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metamod
+          path: NotifyMessages_metamod_*_${{ needs.version.outputs.version }}.zip
+          if-no-files-found: error
+
   publish:
-    needs: [version, cssharp, swiftly]
+    needs: [version, geoip, cssharp, swiftly, metamod-package]
     runs-on: ubuntu-latest
     # Загрузка ассета на GitHub иногда зависает намертво; без лимита прогон висит до 6 часов
     timeout-minutes: 20
     env:
       PLUGIN_VERSION: ${{ needs.version.outputs.version }}
       RELEASE_TAG: ${{ needs.version.outputs.tag }}
+      GEOIP_EDITION: ${{ needs.geoip.outputs.edition }}
     steps:
       # Полная история и теги: описание релиза собирается из коммитов между
       # предыдущим тегом и этим.
@@ -298,6 +603,8 @@ jobs:
             echo "|---|---|---|"
             echo "| \`NotifyMessages_cssharp_${PLUGIN_VERSION}.zip\` | CounterStrikeSharp >= 1.0.369 (.NET 10) | \`addons/counterstrikesharp/plugins/NotifyMessages/\` |"
             echo "| \`NotifyMessages_swiftly_${PLUGIN_VERSION}.zip\` | SwiftlyS2 >= 1.4.9, Metamod not needed | \`addons/swiftlys2/plugins/NotifyMessages/\` |"
+            echo "| \`NotifyMessages_metamod_linux_${PLUGIN_VERSION}.zip\` | Metamod:Source 2.0 >= git1460 (Linux) | \`addons/NotifyMessages/\` + \`addons/metamod/NotifyMessages.vdf\` |"
+            echo "| \`NotifyMessages_metamod_windows_${PLUGIN_VERSION}.zip\` | Metamod:Source 2.0 >= git1460 (Windows) | \`addons/NotifyMessages/\` + \`addons/metamod/NotifyMessages.vdf\` |"
             echo
             echo "Extract into the root of your game server — the directory layout is inside the archive."
             echo "Configs are created on first run:"
@@ -306,17 +613,15 @@ jobs:
             echo "|---|---|"
             echo "| CounterStrikeSharp | \`addons/counterstrikesharp/configs/plugins/NotifyMessages/\` |"
             echo "| SwiftlyS2 | \`addons/swiftlys2/configs/plugins/NotifyMessages/\` |"
+            echo "| Metamod:Source | \`addons/configs/NotifyMessages/\` |"
             echo
             echo "The config files are identical between targets and move between them unchanged."
+            echo
+            echo "GeoLite2 databases in every archive: ${GEOIP_EDITION}."
           } > release-notes.md
 
           cat release-notes.md
 
-      # gh, а не softprops/action-gh-release: тот создаёт релиз и сразу параллельно грузит
-      # оба архива, а релиз в API становится видимым по тегу не мгновенно — v2.3.0 упал ровно
-      # так, "Error saving asset", при уже собранных и проверенных архивах. gh грузит файлы
-      # последовательно с ретраями, а шаг сделан идемпотентным: повторный запуск дозаливает
-      # файлы (--clobber) и обновляет описание, а не падает на "release already exists".
       # gh, а не softprops/action-gh-release: тот создаёт релиз и сразу параллельно грузит
       # оба архива, а релиз в API становится видимым по тегу не мгновенно — v2.3.0 упал ровно
       # так, "Error saving asset", при уже собранных и проверенных архивах.
@@ -363,14 +668,15 @@ jobs:
           gh release edit "$RELEASE_TAG" --draft=false --latest --title "$RELEASE_TAG" \
             --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
 
-          # Проверка до конца: релиз опубликован (не draft) и оба архива на месте.
+          # Проверка до конца: релиз опубликован (не draft) и все четыре архива на месте.
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,url,assets \
             --jq '"draft=\(.isDraft) \(.url)", (.assets[] | "\(.name)\t\(.size) bytes")'
           if [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != "false" ]; then
             echo "::error::релиз $RELEASE_TAG остался черновиком"
             exit 1
           fi
-          for required in "NotifyMessages_cssharp_${PLUGIN_VERSION}.zip" "NotifyMessages_swiftly_${PLUGIN_VERSION}.zip"; do
+          for required in "NotifyMessages_cssharp_${PLUGIN_VERSION}.zip" "NotifyMessages_swiftly_${PLUGIN_VERSION}.zip" \
+                          "NotifyMessages_metamod_linux_${PLUGIN_VERSION}.zip" "NotifyMessages_metamod_windows_${PLUGIN_VERSION}.zip"; do
             gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
               | grep -q -x -F "$required" || { echo "::error::в релизе нет $required"; exit 1; }
           done
