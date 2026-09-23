@@ -1,0 +1,9 @@
+[submodule "metamod/vendor/json"]
+	path = metamod/vendor/json
+	url = https://github.com/nlohmann/json.git
+[submodule "metamod/vendor/doctest"]
+	path = metamod/vendor/doctest
+	url = https://github.com/doctest/doctest.git
+[submodule "metamod/vendor/libmaxminddb"]
+	path = metamod/vendor/libmaxminddb
+	url = https://github.com/maxmind/libmaxminddb.git

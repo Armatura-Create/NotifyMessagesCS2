@@ -1,0 +1,82 @@
+# vim: set sts=2 ts=8 sw=2 tw=99 et ft=python:
+#
+# Plugin sources.
+#
+# Note the split: src/core is built both here and by the local Makefile.tests -
+# the same core, just without the SDK in the second case. Everything that knows
+# about the engine lives in src/mm and never reaches the tests.
+#
+# KEEP THIS FILE ASCII-ONLY (see the note in AMBuildScript).
+import os
+
+for sdk_target in MMSPlugin.sdk_targets:
+  sdk = sdk_target.sdk
+  cxx = sdk_target.cxx
+
+  binary = MMSPlugin.HL2Library(builder, cxx, f'{MMSPlugin.metadata["name"]}.{sdk["name"]}', sdk)
+
+  binary.sources += [
+    # Core: knows no engine, covered by tests on any machine
+    'src/core/a2s.cpp',
+    'src/core/advertisement_service.cpp',
+    'src/core/config.cpp',
+    'src/core/config_defaults.cpp',
+    'src/core/display_service.cpp',
+    'src/core/geoip.cpp',
+    'src/core/language.cpp',
+    'src/core/message_processor.cpp',
+    'src/core/players.cpp',
+    'src/core/rtti_search.cpp',
+    'src/core/scheduler.cpp',
+    'src/core/server_status_service.cpp',
+    'src/core/session_service.cpp',
+    'src/core/template_diagnostics.cpp',
+    'src/core/text_formatter.cpp',
+    'src/core/util/fs.cpp',
+
+    # Metamod layer: the only place that talks to the engine
+    'src/mm/plugin.cpp',
+    'src/mm/events.cpp',
+    'src/mm/commands.cpp',
+    'src/mm/output.cpp',
+    'src/mm/rtti.cpp',
+
+    # libmaxminddb as a single wrapper file, which also adds opening the database
+    # from memory instead of mmap - a page fault would kill the server with SIGBUS
+    'src/core/geoip_maxminddb.c',
+    'vendor/libmaxminddb/src/data-pool.c',
+  ]
+
+  # eiface.h - which ISmmPlugin.h pulls in - includes network_connection.pb.h,
+  # and the Source 2 SDK ships those only as .proto files. protoc has to run before
+  # anything in src/mm can compile. The list mirrors CS2Fixes: pruning it looks
+  # tempting, but the generated headers include each other, and a missing one
+  # surfaces as a confusing "file not found" three levels deep. gameevents.proto
+  # and usermessages.proto are the ones src/mm/output.cpp uses directly.
+  protoc_builder = builder.tools.Protoc(protoc = sdk_target.protoc, sources = [
+    os.path.join(sdk['path'], 'common', 'valveextensions.proto'),
+    os.path.join(sdk['path'], 'common', 'network_connection.proto'),
+    os.path.join(sdk['path'], 'common', 'source2_steam_stats.proto'),
+    os.path.join(sdk['path'], 'common', 'netmessages.proto'),
+    os.path.join(sdk['path'], 'common', 'networkbasetypes.proto'),
+    os.path.join(sdk['path'], 'common', 'engine_gcmessages.proto'),
+    os.path.join(sdk['path'], 'gcsdk', 'steammessages.proto'),
+    os.path.join(sdk['path'], 'gcsdk', 'gcsdk_gcmessages.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'gameevents.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'te.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'usercmd.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'usermessages.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'cs', 'cs_gameevents.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'cs', 'cs_usercmd.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'cstrike15', 'cstrike15_gcmessages.proto'),
+    os.path.join(sdk['path'], 'game', 'shared', 'cstrike15', 'cstrike15_usermessages.proto'),
+    os.path.join(sdk['path'], 'networksystem', 'networksystem_protomessages.proto'),
+  ])
+  protoc_builder.protoc.includes += [
+    os.path.join(sdk['path'], 'gcsdk'),
+  ]
+
+  binary.custom = [protoc_builder]
+
+  nodes = builder.Add(binary)
+  MMSPlugin.binaries += [nodes]

@@ -39,3 +39,10 @@ Thumbs.db
 Directory.Build.props
 
 graphify-out/
+
+# Нативная цель: сборка AMBuild, локальный контейнер, тесты ядра, SDK из CI
+metamod/build/
+metamod/build-docker/
+metamod/build-tests/
+metamod/sdk/
+metamod/hl2sdk-manifests/

@@ -1,0 +1,11 @@
+{
+    "name": "NotifyMessages",
+    "alias": "notifymessages",
+    "display_name": "NotifyMessages",
+    "description": "Notifications, adverts, greetings and server monitoring for CS2",
+    "author": "Armatura",
+    "url": "https://github.com/Armatura-Create/NotifyMessagesCS2",
+    "log_tag": "NotifyMessages",
+    "license": "GPL-3.0",
+    "version": "{{parsed-version}}"
+}
