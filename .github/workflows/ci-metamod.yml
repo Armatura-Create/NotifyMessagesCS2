@@ -1,0 +1,180 @@
+name: CI (Metamod:Source)
+
+# Фильтр по путям: сборка C++ с hl2sdk и протобуфами идёт минуты, и гонять её на
+# правку в cssharp/ или swiftly/ незачем. Обратная сторона та же, что у C#-целей:
+# PR, не трогающий metamod/, статуса отсюда не получит.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'metamod/**'
+      - 'GeoIP/**'
+      - '.github/workflows/ci-metamod.yml'
+  pull_request:
+    paths:
+      - 'metamod/**'
+      - 'GeoIP/**'
+      - '.github/workflows/ci-metamod.yml'
+  workflow_dispatch:
+
+jobs:
+  # Ядро плагина не знает ни про hl2sdk, ни про Metamod — собирается обычным
+  # компилятором за секунды. Здесь живут все инварианты: конфиг, рендер каналов,
+  # A2S, открытие .mmdb из памяти, поиск vtable по RTTI.
+  core:
+    name: Core (tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # AMBuild читает скрипты в кодировке локали, а на Windows-раннере это cp1252:
+      # один не-ASCII байт роняет configure с UnicodeDecodeError. Дешевле поймать здесь.
+      - name: Build scripts must be ASCII
+        working-directory: metamod
+        run: |
+          set -euo pipefail
+          for f in AMBuildScript AMBuilder PackageScript configure.py; do
+            python3 - "$f" <<'PY'
+          import sys
+          name = sys.argv[1]
+          data = open(name, 'rb').read()
+          try:
+              data.decode('ascii')
+          except UnicodeDecodeError as e:
+              line = data[:e.start].count(b'\n') + 1
+              sys.exit(f'::error file={name},line={line}::non-ASCII byte; '
+                       f'AMBuild cannot read this on the Windows runner')
+          PY
+          done
+          echo "all build scripts are ASCII"
+
+      - name: Core tests
+        working-directory: metamod
+        run: |
+          make -f Makefile.tests -j"$(nproc)"
+          ./build-tests/nm_tests
+
+      # Игровая сборка идёт с -fno-exceptions и -std=c++20, тесты — с исключениями
+      # и c++17. Без исключений nlohmann/json на ошибке зовёт abort(): кривой конфиг
+      # убил бы сервер вместо отката на значения по умолчанию.
+      - name: Core compiles as the game build does
+        working-directory: metamod
+        run: make -f Makefile.tests noexcept-check
+
+      # AMBuilder перечисляет исходники руками, тесты берут их маской
+      - name: AMBuilder builds every core source
+        working-directory: metamod
+        run: make -f Makefile.tests sources-check
+
+  # Сам плагин. Linux — только в контейнере Steam Runtime 3: это ABI выделенного
+  # сервера CS2, и бинарник с обычного ubuntu-раннера не загрузится.
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux (SteamRT3)
+            container: ghcr.io/source2ze/build-containers:steamrt3
+          - os: windows-latest
+            name: Windows
+
+    env:
+      HL2SDKCS2: ${{ github.workspace }}/NotifyMessages/metamod/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: NotifyMessages
+          submodules: recursive
+          fetch-depth: 0
+
+      # hl2sdk и манифесты — checkout, а не сабмодуль: сабмодуль навсегда затащил бы
+      # в репозиторий гигабайты истории SDK
+      - name: Checkout hl2sdk (cs2)
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk
+          ref: cs2
+          path: NotifyMessages/metamod/sdk
+          submodules: recursive
+
+      - name: Checkout hl2sdk-manifests
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/hl2sdk-manifests
+          path: NotifyMessages/metamod/hl2sdk-manifests
+
+      - name: Checkout Metamod:Source
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/metamod-source
+          ref: master
+          path: mmsource-2.0
+          submodules: recursive
+
+      # AMBuild есть в образе SteamRT3; на Windows-раннере его ставим сами
+      - name: Checkout AMBuild
+        if: matrix.os == 'windows-latest'
+        uses: actions/checkout@v4
+        with:
+          repository: alliedmodders/ambuild
+          path: ambuild
+
+      - name: Install AMBuild
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools
+          cd ambuild && python -m pip install .
+
+      # Вывод компилятора дублируется аннотациями: их видно без входа в систему,
+      # а ошибка внутри лога на 4000 строк стоит каждому читателю лишнего круга
+      - name: Build plugin
+        shell: bash
+        working-directory: NotifyMessages/metamod
+        run: |
+          set +e -u -o pipefail
+          mkdir -p build && cd build
+          python ../configure.py --enable-optimize --sdks cs2 2>&1 | tee configure.out
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -iE "error" configure.out | head -20 | while IFS= read -r line; do
+              echo "::error::configure: ${line}"
+            done
+            exit "$status"
+          fi
+
+          ambuild 2>&1 | tee build.out
+          status=${PIPESTATUS[0]}
+          [ "$status" -eq 0 ] && exit 0
+
+          grep -E "error[ :C]" build.out | grep -v "^ " | head -20 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+          exit "$status"
+
+      # Metamod находит плагин через dlsym("CreateInterface"). Под Linux символ
+      # приходит из статического tier1 SDK, и неосторожный --exclude-libs его прячет:
+      # сборка зелёная, плагин не грузится (так вышел ConnectHistory v3.1.2)
+      - name: Plugin exports CreateInterface
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: NotifyMessages/metamod
+        run: |
+          so=build/package/cs2/addons/NotifyMessages/bin/linuxsteamrt64/NotifyMessages.so
+          nm -D --defined-only "$so" > exports.txt
+          grep -w CreateInterface exports.txt \
+            || { echo "::error::$so does not export CreateInterface - Metamod cannot load it"; exit 1; }
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: metamod-${{ matrix.os == 'windows-latest' && 'windows' || 'linux' }}
+          path: NotifyMessages/metamod/build/package/cs2
+          if-no-files-found: error
