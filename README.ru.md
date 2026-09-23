@@ -4,6 +4,7 @@
 
 [![CI CSSharp](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-cssharp.yml/badge.svg)](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-cssharp.yml)
 [![CI SwiftlyS2](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-swiftly.yml/badge.svg)](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-swiftly.yml)
+[![CI Metamod](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-metamod.yml/badge.svg)](https://github.com/Armatura-Create/NotifyMessagesCS2/actions/workflows/ci-metamod.yml)
 [![Release](https://img.shields.io/github/v/release/Armatura-Create/NotifyMessagesCS2?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/Armatura-Create/NotifyMessagesCS2/total?logo=github&color=success)](https://github.com/Armatura-Create/NotifyMessagesCS2/releases)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/)
@@ -17,7 +18,7 @@
 приветствия, сообщения о смене команды и живой список ваших других серверов через A2S — каждое
 сообщение на языке игрока.
 
-Реализовано **дважды**, под две платформы плагинов. Кода у них общего нет — общая
+Реализовано **трижды**, под три платформы плагинов. Кода у них общего нет — общая
 **конфигурация**: `Settings.json`, `Messages.json`, `Ads.json` и `Servers.json` переносятся
 между платформами без правок.
 
@@ -25,6 +26,7 @@
 |---|---|---|---|
 | **CounterStrikeSharp** | CSSharp ≥ 1.0.369 (а значит и Metamod:Source) | `NotifyMessages_cssharp_<версия>.zip` | `addons/counterstrikesharp/plugins/NotifyMessages/` |
 | **SwiftlyS2** | SwiftlyS2 ≥ 1.4.9, Metamod **не нужен** | `NotifyMessages_swiftly_<версия>.zip` | `addons/swiftlys2/plugins/NotifyMessages/` |
+| **Metamod:Source** (нативный C++) | Metamod:Source 2.0 ≥ git1460, **без** CSSharp и SwiftlyS2 | `NotifyMessages_metamod_<linux\|windows>_<версия>.zip` | `addons/NotifyMessages/` |
 
 ## ✨ Особенности
 
@@ -86,17 +88,47 @@ addons/swiftlys2/plugins/NotifyMessages/
 `sw_restart_notify` принимается только из консоли сервера.
 </details>
 
+<details>
+<summary>Metamod:Source (нативный)</summary>
+
+> Нужен **Metamod:Source 2.0 git1460 или новее** — сборка, в которой SourceHook заменён на KHook.
+> Больше ничего: ни .NET, ни CounterStrikeSharp, ни SwiftlyS2. Архивов два, по одному на ОС —
+> берите под свой сервер.
+
+```
+addons/
+├── metamod/NotifyMessages.vdf
+└── NotifyMessages/
+    ├── bin/linuxsteamrt64/NotifyMessages.so     (на Windows — bin/win64/NotifyMessages.dll)
+    ├── GeoLite2-Country.mmdb
+    └── GeoLite2-City.mmdb
+```
+
+В плагине **нет ни сигнатур, ни смещений**: игроки — из хуков подключения движка, вывод —
+через фабричные интерфейсы, менеджер игровых событий ищется по RTTI-имени класса. Обновление
+CS2 его не ломает. Отличия от двух других целей:
+
+- админские команды (`mm_restart_notify`, `mm_reload_advert`, `mm_nm_check`, `mm_nm_preview`)
+  выполняются **только из консоли сервера или через rcon** — своей системы прав у Metamod нет;
+  `mm_nm_preview` печатает результат в консоль;
+- `Settings.ShowHtmlWhenDead` не действует (как и на SwiftlyS2): пауза HTML-панели на время
+  смерти требует читать пешку, то есть смещения движка;
+- если менеджер событий не найден (об этом пишется при загрузке), `CenterHtml` выводится обычным
+  центром, а смена команды не анонсируется; всё остальное работает.
+</details>
+
 2. Запустите сервер — плагин автоматически создаст конфигурационные файлы.
 
 ## ⚙️ Конфигурация
 
 Плагин использует **модульную систему конфигурации** — 4 отдельных JSON-файла. Файлы одинаковы
-для обеих платформ, различается только каталог:
+для всех платформ, различается только каталог:
 
 | Платформа | Каталог конфигов |
 |---|---|
 | CounterStrikeSharp | `csgo/addons/counterstrikesharp/configs/plugins/NotifyMessages/` |
 | SwiftlyS2 | `csgo/addons/swiftlys2/configs/plugins/NotifyMessages/` |
+| Metamod:Source | `csgo/addons/configs/NotifyMessages/` |
 
 ```
 configs/plugins/NotifyMessages/
@@ -125,7 +157,7 @@ css_reload_advert         // применить все четыре файла
 ```
 
 На SwiftlyS2 те же команды идут с префиксом `sw_` вместо `css_` (`sw_nm_check`,
-`sw_nm_preview`, `sw_reload_advert`).
+`sw_nm_preview`, `sw_reload_advert`), на Metamod:Source — с `mm_` (консоль сервера или rcon).
 
 **Битый конфиг не роняет плагин.** Если файл не разобрался, в лог пишется имя файла, строка
 и позиция ошибки, для этого файла берутся значения по умолчанию, а остальные три читаются
@@ -487,15 +519,16 @@ css_reload_advert         // применить все четыре файла
 
 ## 🎮 Команды
 
-Команды одинаковы на обеих платформах, различается только префикс.
+Команды одинаковы на всех платформах, различается только префикс. Игроки везде пишут в чат
+`!servers` (`/servers` — то же, но без показа сообщения в чате).
 
-| Действие | CounterStrikeSharp | SwiftlyS2 |
-|---|---|---|
-| Показать список серверов из кеша (кулдаун 10 с на игрока) | `css_servers` (игрок) | `sw_servers` (игрок) |
-| Отправить сообщение `RestartNotify` для отсечки, 0–86400 с | `css_restart_notify <сек>` (консоль сервера) | `sw_restart_notify <сек>` (консоль сервера) |
-| Перезагрузить все 4 конфига без перезапуска | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) |
-| Проверить все шаблоны: неизвестные теги, дыры в переводах | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) |
-| Показать шаблон себе прямо сейчас: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) |
+| Действие | CounterStrikeSharp | SwiftlyS2 | Metamod:Source |
+|---|---|---|---|
+| Показать список серверов из кеша (кулдаун 10 с на игрока) | `css_servers` (игрок) | `sw_servers` (игрок) | `mm_servers` (игрок) |
+| Отправить сообщение `RestartNotify` для отсечки, 0–86400 с | `css_restart_notify <сек>` (консоль сервера) | `sw_restart_notify <сек>` (консоль сервера) | `mm_restart_notify <сек>` (консоль сервера) |
+| Перезагрузить все 4 конфига без перезапуска | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) | `mm_reload_advert` (консоль сервера) |
+| Проверить все шаблоны: неизвестные теги, дыры в переводах | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) | `mm_nm_check` (консоль сервера) |
+| Показать шаблон: `welcome`, `ad <n>`, `servers`, `key <ключ>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) | `mm_nm_preview <цель>` (консоль сервера) |
 
 После показа списка серверов запускается фоновое обновление кеша, чтобы следующий запрос
 показал актуальные данные.
@@ -516,7 +549,7 @@ css_reload_advert            // Перезагрузить все конфиги
 одним языком для всех.
 
 Замените в конфиге апдейтера команду `say` на `css_restart_notify <секунды>` (на SwiftlyS2 —
-`sw_restart_notify`) — и тексты подтянутся из `Messages.json` на языке каждого игрока,
+`sw_restart_notify`, на Metamod:Source — `mm_restart_notify`) — и тексты подтянутся из `Messages.json` на языке каждого игрока,
 с цветами из `Settings.json`.
 
 Пример конфига апдейтера:
@@ -583,20 +616,29 @@ css_reload_advert            // Перезагрузить все конфиги
 
 ## 🔧 Build и упаковка
 
-Нужен **.NET 10 SDK**. Каждая цель собирается сама по себе:
+C#-целям нужен **.NET 10 SDK**, ядру нативной — компилятор C++17. Каждая цель собирается
+сама по себе:
 
 ```bash
 export PATH="$HOME/.dotnet:$PATH"
 
 cd cssharp && ./build.sh      # тесты + NotifyMessages_cssharp_<версия>.zip в bin/Release/net10.0/
 cd swiftly && ./build.sh      # тесты + NotifyMessages_swiftly_<версия>.zip
+
+git submodule update --init --recursive
+cd metamod && make -f Makefile.tests -j8 && ./build-tests/nm_tests   # ядро нативной цели, любая ОС
 ```
+
+Сам нативный плагин (hl2sdk, Metamod:Source, protobuf) собирается в CI — контейнер Steam
+Runtime 3 для Linux и `windows-latest` для Windows. Те же шаги для локальной сборки под Linux
+или в Docker — в [`metamod/README.md`](metamod/README.md).
 
 ### Тесты:
 
 ```bash
 dotnet test cssharp/NotifyMessages.sln
 dotnet test swiftly/NotifyMessages.sln
+cd metamod && make -f Makefile.tests && ./build-tests/nm_tests
 ```
 
 Покрыты чистые части, которые ломались чаще всего: разбор недоверенных A2S-пакетов
@@ -612,22 +654,26 @@ dotnet test swiftly/NotifyMessages.sln
 
 ### CI и релизы:
 
-- `.github/workflows/ci-cssharp.yml`, `ci-swiftly.yml` — сборка и тесты с фильтром по путям:
-  правка одной цели не пересобирает другую
-- `.github/workflows/release.yml` — по тегу `v*`: одна задача `version`, затем обе цели
-  параллельно (сборка → **тесты** → упаковка → проверка архива), затем GitHub Release с обоими
-  архивами и описанием, собранным из коммитов (см. [CONTRIBUTING.md](CONTRIBUTING.md))
+- `.github/workflows/ci-cssharp.yml`, `ci-swiftly.yml`, `ci-metamod.yml` — сборка и тесты с
+  фильтром по путям: правка одной цели не пересобирает другие
+- `.github/workflows/release.yml` — по тегу `v*`: задачи `version` и `geoip`, затем все три цели
+  параллельно (сборка → **тесты** → упаковка → проверка архива), затем GitHub Release со всеми
+  четырьмя архивами и описанием, собранным из коммитов (см. [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ```bash
 git tag v2.3.0 && git push origin v2.3.0
 ```
 
 Версию задаёт **тег** и только он: workflow вычисляет её из имени тега (`v2.3.0` → `2.3.0`),
-передаёт в обе сборки, и каждый плагин сообщает её серверу — в исходниках поднимать ничего
-не нужно. Затем workflow проверяет, что версия действительно попала в каждую собранную DLL.
+передаёт во все сборки, и каждый плагин сообщает её серверу — в исходниках поднимать ничего
+не нужно. Затем workflow проверяет, что версия действительно попала в каждый собранный бинарник.
 
-Релиз не публикуется, если тесты красные. Секрет `MAXMIND_LICENSE_KEY` в репозитории
-не обязателен — без него в архивы попадут закоммиченные базы из `GeoIP/`.
+Релиз не публикуется, если тесты красные. Свежие базы GeoLite2 скачиваются **один раз** за релиз
+задачей `geoip` и раздаются всем трём целям — во всех архивах одна редакция баз. Ключ — секрет
+`MAXMIND_LICENSE_KEY` **окружения `RELEASE`**: секреты окружения видны только задачам с
+`environment: RELEASE`, и такая задача одна — `geoip`. Без ключа в архивы попадут закоммиченные
+базы из `GeoIP/` (с предупреждением); если ключ задан, но скачать не удалось, релиз падает, а не
+уезжает молча со старыми данными.
 
 ---
 
@@ -706,6 +752,7 @@ dotnet build -c Release -p:GeoLiteLicenseKey=ВАШ_КЛЮЧ
 
 - CounterStrikeSharp **>= 1.0.369** (`MinimumApiVersion` 369) — или SwiftlyS2 **>= 1.4.9**
   (`MinimumAPIVersion` 1.4.9); .NET 10 в обоих случаях
+- или один Metamod:Source 2.0 **>= git1460** — для нативной сборки
 - Windows и Linux
 
 ### Почему не меню SwiftlyS2 для панели в центре
@@ -748,6 +795,10 @@ GNU General Public License, опубликованной Free Software Foundatio
 |-----------|----------|
 | [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) | MIT |
 | [MaxMind.GeoIP2](https://github.com/maxmind/GeoIP2-dotnet) | Apache-2.0 |
+| [libmaxminddb](https://github.com/maxmind/libmaxminddb) (нативная цель) | Apache-2.0 |
+| [nlohmann/json](https://github.com/nlohmann/json) (нативная цель) | MIT |
+| [doctest](https://github.com/doctest/doctest) (нативная цель, только тесты) | MIT |
+| [CS2Fixes](https://github.com/Source2ZE/CS2Fixes) — скрипты AMBuild и поиск vtable по RTTI, адаптированы | GPL-3.0 |
 | Базы GeoLite2 (`GeoIP/*.mmdb`) | [MaxMind GeoLite2 EULA](https://www.maxmind.com/en/geolite2/eula) — **не** покрываются GPL этого проекта |
 
 Базы GeoLite2, лежащие в `GeoIP/` и попадающие в релизные архивы, остаются под условиями MaxMind.

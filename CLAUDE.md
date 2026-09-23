@@ -1,12 +1,13 @@
 # CLAUDE.md
 
 **NotifyMessages** — уведомления, реклама, приветствия, локализация и мониторинг чужих
-серверов через A2S для CS2. Реализован **дважды**, под две платформы плагинов:
+серверов через A2S для CS2. Реализован **трижды**, под три платформы плагинов:
 
-| Каталог | Платформа | Metamod нужен? |
-|---|---|---|
-| `cssharp/` | CounterStrikeSharp ≥ 1.0.369 | да (CSSharp сам — плагин MM:S) |
-| `swiftly/` | SwiftlyS2 ≥ 1.4.9 | **нет**, свой лоадер через `gameinfo.gi` |
+| Каталог | Платформа | Язык | Metamod нужен? |
+|---|---|---|---|
+| `cssharp/` | CounterStrikeSharp ≥ 1.0.369 | C# / net10.0 | да (CSSharp сам — плагин MM:S) |
+| `swiftly/` | SwiftlyS2 ≥ 1.4.9 | C# / net10.0 | **нет**, свой лоадер через `gameinfo.gi` |
+| `metamod/` | Metamod:Source 2.0 ≥ git1460 | C++17 | да — это и есть нативный плагин MM:S |
 
 **Код продублирован между целями сознательно** (решение владельца: цели развиваются
 независимо). Раскладка файлов одинаковая, чтобы цели можно было сравнивать глазами.
@@ -14,8 +15,9 @@
 
 > **Формат конфигов — контракт.** `Settings.json`, `Messages.json`, `Ads.json`, `Servers.json`
 > переносятся между платформами без правок. Меняешь модель конфига, схему, дефолты или
-> семантику тега — меняй в обеих целях или ни в одной. Компилятор об этом не напомнит,
-> только этот файл.
+> семантику тега — меняй во всех трёх целях или ни в одной. Компилятор об этом не напомнит,
+> только этот файл. Дефолты `metamod/` — байт-в-байт вывод C#-цели (`config_defaults.cpp`
+> сгенерирован из него); правишь дефолты в C# — перегенерируй и там.
 
 Общее по репозиторию: `GeoIP/` (одна копия баз GeoLite2), `LICENSE`, `README*.md`,
 `CONTRIBUTING.md`, `.github/`. Репозиторий: <https://github.com/Armatura-Create/NotifyMessagesCS2>.
@@ -70,6 +72,51 @@
 - Цвета чата в `TextFormatter` выписаны байтами и **сверены с `ChatColors` CSSharp** (рефлексией
   с пакета 1.0.369): это коды движка. При расхождении верна cssharp-версия.
 
+
+## Цель `metamod/` — Metamod:Source (C++)
+
+- C++17 (игровая сборка — c++20 и `-fno-exceptions`). Ядро `src/core` **не знает про hl2sdk**:
+  конфиг, рендер, локализация, реклама, A2S, GeoIP, планировщик, реестр игроков, HTML-центр,
+  поиск vtable по RTTI — всё там и под тестами (`make -f Makefile.tests && ./build-tests/nm_tests`).
+  `src/mm` — только движок; собирается лишь в CI (или в Docker-контейнере SteamRT3).
+- **Ни сигнатур, ни смещений.** Игроки — из хуков `IServerGameClients` (`PlayerRegistry` по слоту;
+  SteamID/ник/IP отдаёт сам движок), вывод — `TextMsg` через `INetworkMessages`+`IGameEventSystem`,
+  консоль — `ClientPrintf`, язык — `GetClientConVarValue(slot, "cl_language")` + `steam_language`.
+  Сущности движка (контроллер, пешка) **не читаются вовсе** — отсюда `ShowHtmlWhenDead` не действует
+  и `{PLAYERS}` считает всех в игре.
+- **`CGameEventManager` ищется по RTTI-имени** (`mm/rtti.cpp` — секции ELF/PE, `core/rtti_search.cpp`
+  — раскладка Itanium/MSVC, алгоритм из CS2Fixes). `FireEvent` перехватывается `AddGlobal` по vtable,
+  объект менеджера — первый аргумент хука (`g_gameEventManager`). На нём держатся HTML-панель,
+  `bDontBroadcast` для `player_disconnect`/`player_team` (как `EventPlayer*Pre` в C#) и анонс смены
+  команды. Не нашёлся — `CenterHtml` деградирует до `Center` (`IMessageSink::HtmlAvailable`), громко в лог.
+- **Хуки — KHook, не SourceHook** (Metamod убрал SourceHook 2026-09-08). `KHook::Virtual` привязывается
+  в конструкторе плагина, `Add`/`AddGlobal` в `Load`, `Remove`/`RemoveGlobal` в `Unload`. Подмена
+  параметра — `KHook::Recall` (так CSSharp выставляет `bDontBroadcast`).
+- **Главный поток — `GameFrame`.** Там `Scheduler::RunFrame` (таймеры, `NextFrame`) и
+  `DisplayService::OnTick`. `Scheduler::NextFrame` — единственное, что можно звать из фона.
+  `SessionService`, `GeoIpService`, реестр игроков — без замков: их трогает только главный поток.
+- **Фоновый опрос A2S — свой `std::thread`**, и его **обязательно join-ят** (`~ServerStatusService`,
+  `Stop`) до выгрузки библиотеки: поток исполняет её код. Логи из фона — через `NextFrame`.
+  Между пачками по 8 запросов проверяется остановка. Сокеты: `poll` на POSIX (у игрового процесса
+  дескрипторы > 1024, `FD_SET` за `FD_SETSIZE` — запись за пределы структуры), `select` на Windows.
+- **Слот — только адрес доставки в пределах кадра.** Через таймер уходит SteamID, слот ищется
+  заново (`PlayerRegistry::FindBySteamId`) — тот же инвариант, что «контроллер не через кадр» в C#.
+- **Конфиг читается без исключений**: тип каждого поля проверяется до `get<T>()`. Ошибка типа
+  отвергает **весь файл**, как `System.Text.Json` в C# (`Reader` в `config.cpp`), позиция
+  синтаксической ошибки — через SAX-проход. Файл принимается копией целиком или не принимается.
+- **Сервисы с таймерами пересоздаются в `mm_reload_advert`** (`BuildTimedServices`/`StopTimedServices`);
+  `AdvertisementService` и `ServerStatusService` копируют свою часть конфига, чтобы таймеры не
+  держали указатели в заменённый `Config`. `LanguageIndex` пересобирается там же.
+- **`.mmdb` открываются только из памяти** (`nm_mmdb_open_memory`, обёртка включает `maxminddb.c`
+  целиком): `libmaxminddb` умеет лишь mmap. При подъёме вендора сверять последовательность
+  инициализации — компилятор не предупредит.
+- Версия — `src/mm/version.h` (`NM_VERSION`), в релизе перезаписывается из тега; фолбэк `0.0.0-dev`
+  релиз отвергает. Экспорт `CreateInterface` проверяется в CI: `--exclude-libs` только по имени архива
+  (`libprotobuf.a`), никогда `ALL`.
+- Вендоры — сабмодули: `nlohmann/json`, `doctest`, `libmaxminddb`. `AMBuildScript`/`configure.py` —
+  из CS2Fixes (GPL-3.0) через ConnectHistory. Скрипты AMBuild — **только ASCII** (Windows-раннер
+  читает их в cp1252), это проверяет CI.
+
 ## Команды
 
 ```bash
@@ -80,6 +127,10 @@ cd swiftly && ./build.sh 2.3.0    # то же, с явной версией
 
 dotnet test cssharp/NotifyMessages.sln
 dotnet test swiftly/NotifyMessages.sln
+
+git submodule update --init --recursive
+cd metamod && make -f Makefile.tests -j8 && ./build-tests/nm_tests   # ядро C++, любая ОС
+make -f Makefile.tests noexcept-check sources-check                   # как игровая сборка
 ```
 
 Тесты лежат в `<цель>/tests/` и покрывают то, что уже ломалось: разбор недоверенных
@@ -98,14 +149,22 @@ A2S-пакетов, санацию чужих строк, цветовые те�
 
 ## CI/CD
 
-По workflow на цель, каждый с фильтром по путям (`ci-cssharp.yml`, `ci-swiftly.yml`): правка
-одной цели не гоняет сборку другой. Обратная сторона: PR, не трогающий цель, не даёт по ней
+По workflow на цель, каждый с фильтром по путям (`ci-cssharp.yml`, `ci-swiftly.yml`,
+`ci-metamod.yml`): правка одной цели не гоняет сборку других. `ci-metamod.yml` — тесты ядра и
+сборка плагина в SteamRT3 (Linux) и на `windows-latest`, hl2sdk `cs2` и metamod-source `master`
+берутся свежими. Обратная сторона: PR, не трогающий цель, не даёт по ней
 статуса — такой чек нельзя делать обязательным в branch protection.
 
 `release.yml` срабатывает на тег `v*` (или вручную). Версия вычисляется **один раз** в задаче
-`version` и раздаётся обеим целям: два плагина под одним тегом обязаны представляться одним
-номером. Каждая цель: build → test → package → проверка архива (нужные файлы есть, конфигов
-нет, у swiftly нет сборок SwiftlyS2, версия зашита в DLL) → артефакт. Задача `publish` собирает
+`version` и раздаётся всем целям: плагины под одним тегом обязаны представляться одним
+номером. Базы GeoLite2 — тоже один раз: задача `geoip` с **`environment: RELEASE`** — ключ
+`MAXMIND_LICENSE_KEY` лежит секретом окружения `RELEASE`, а секреты окружения видны только
+задачам, которые его объявили. Пока ключ читался в задачах сборки без окружения, он приходил
+пустым и в архивы молча уезжали закоммиченные базы. Теперь `geoip` качает базы (или берёт
+`GeoIP/` без ключа, с предупреждением; с ключом, но при отказе MaxMind — падает), и все три цели
+получают их артефактом; каждая проверяет sha256 баз в своём архиве. Каждая цель: build → test → package → проверка архива (нужные файлы есть, конфигов
+нет, у swiftly нет сборок SwiftlyS2, версия зашита в бинарник; у metamod — по архиву на ОС,
+VDF без обратных слэшей, экспорт `CreateInterface`, нет фолбэка `0.0.0-dev`) → артефакт. Задача `publish` собирает
 описание релиза из коммитов между предыдущим тегом и новым (Conventional Commits, см.
 `CONTRIBUTING.md`; коммит не по форме уходит в «Other», а не теряется) и публикует оба архива.
 Ей нужен `fetch-depth: 0` — без тегов нечего диффать. Сам релиз создаёт `gh`, а не
@@ -385,13 +444,13 @@ Enum'ы читаются и пишутся строками (`JsonStringEnumConv
 
 ## Команды плагина
 
-| Действие | CounterStrikeSharp | SwiftlyS2 |
-|---|---|---|
-| список серверов из кеша + фоновое обновление, кулдаун 10 с на игрока | `css_servers` (CLIENT_ONLY) | `sw_servers` (игрок) |
-| точка интеграции с внешним апдейтером, 0–86400 | `css_restart_notify <sec>` (SERVER_ONLY) | `sw_restart_notify <sec>` (только консоль) |
-| перезагрузка всех четырёх конфигов | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) |
-| прогон всех шаблонов через `TemplateDiagnostics` | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) |
-| рендер шаблона себе: `welcome`, `ad <n>`, `servers`, `key <k>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) |
+| Действие | CounterStrikeSharp | SwiftlyS2 | Metamod:Source |
+|---|---|---|---|
+| список серверов из кеша + фоновое обновление, кулдаун 10 с на игрока | `css_servers` (CLIENT_ONLY) | `sw_servers` (игрок) | `mm_servers`, `!servers`, `/servers` (игрок) |
+| точка интеграции с внешним апдейтером, 0–86400 | `css_restart_notify <sec>` (SERVER_ONLY) | `sw_restart_notify <sec>` (только консоль) | `mm_restart_notify <sec>` (только консоль) |
+| перезагрузка всех четырёх конфигов | `css_reload_advert` (`@css/root`) | `sw_reload_advert` (`notifymessages.admin`) | `mm_reload_advert` (только консоль) |
+| прогон всех шаблонов через `TemplateDiagnostics` | `css_nm_check` (`@css/root`) | `sw_nm_check` (`notifymessages.admin`) | `mm_nm_check` (только консоль) |
+| рендер шаблона: `welcome`, `ad <n>`, `servers`, `key <k>`, `raw <текст>` | `css_nm_preview <цель>` (`@css/root`) | `sw_nm_preview <цель>` (`notifymessages.admin`) | `mm_nm_preview <цель>` (только консоль, печать в консоль) |
 
 `css_nm_preview` и `css_nm_check` существуют, чтобы петля «правка конфига → результат» была
 секундой, а не интервалом рекламы. Предпросмотр обязан идти через `DisplayService.Print` —
